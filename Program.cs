@@ -1,44 +1,48 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using sumile.Data; // DbContext の名前空間を適宜変更
+using sumile.Data; // ← 自分のDbContextのnamespace
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Connection String を取得（appsettings.json or 環境変数）
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-                      ?? Environment.GetEnvironmentVariable("DATABASE_URL");
-
-// DbContext の登録（PostgreSQL を使用）
+// DbContext（既に設定済み）
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add services to the container.
+// ここを追加 (AddIdentity)
+builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
+{
+    // パスワードポリシー等の設定
+    options.SignIn.RequireConfirmedAccount = false;
+})
+.AddEntityFrameworkStores<ApplicationDbContext>()
+.AddDefaultTokenProviders();
+
+// MVC + Razor Pages
 builder.Services.AddControllersWithViews();
+builder.Services.AddRazorPages();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
-
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
 
+// ここ大事
+app.UseAuthentication(); // Identity を使うには必須
 app.UseAuthorization();
 
+// MVCルート + Identity が提供するRazorPagesのマップ
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
+    pattern: "{controller=Home}/{action=Index}/{id?}"
+);
+app.MapRazorPages(); // Identity のUIはRazor Pages
 
 app.Run();

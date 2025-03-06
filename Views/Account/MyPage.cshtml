@@ -1,0 +1,11 @@
+﻿@{
+    ViewData["Title"] = "MyPage";
+}
+
+<h2>マイページ</h2>
+
+<p>ログイン後の専用画面です。</p>
+
+<form asp-controller="Account" asp-action="Logout" method="post">
+    <button type="submit" class="btn btn-danger">ログアウト</button>
+</form>
