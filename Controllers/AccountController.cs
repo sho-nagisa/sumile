@@ -42,19 +42,21 @@ namespace sumile.Controllers
             var result = await _userManager.CreateAsync(user, model.Password);
             if (result.Succeeded)
             {
-                // 作成成功 → ログインさせて MyPage へ
                 await _signInManager.SignInAsync(user, isPersistent: false);
                 return RedirectToAction("MyPage", "Account");
             }
 
+            // ここでエラーをログ出力
             foreach (var error in result.Errors)
             {
+                // 例として Console.WriteLine で出力（Visual Studio の出力ウィンドウに表示されます）
+                Console.WriteLine(error.Description);
+                // または、ログフレームワークがあれば適宜記録する
                 ModelState.AddModelError(string.Empty, error.Description);
             }
 
             return View(model);
         }
-
         // ========== ログイン ==========
 
         [HttpGet]
