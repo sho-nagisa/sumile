@@ -1,26 +1,25 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
-using sumile.Models;  // ViewModelたちの名前空間
+using sumile.Models;  // ApplicationUser、ViewModel などの名前空間
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization; // [Authorize] 属性を使う場合
+using Microsoft.AspNetCore.Authorization;
 
 namespace sumile.Controllers
 {
     public class AccountController : Controller
     {
-        private readonly UserManager<IdentityUser> _userManager;
-        private readonly SignInManager<IdentityUser> _signInManager;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly SignInManager<ApplicationUser> _signInManager;
 
         public AccountController(
-            UserManager<IdentityUser> userManager,
-            SignInManager<IdentityUser> signInManager)
+            UserManager<ApplicationUser> userManager,
+            SignInManager<ApplicationUser> signInManager)
         {
             _userManager = userManager;
             _signInManager = signInManager;
         }
 
         // ========== ユーザー登録 ==========
-
         [HttpGet]
         public IActionResult Register()
         {
@@ -33,7 +32,7 @@ namespace sumile.Controllers
             if (!ModelState.IsValid)
                 return View(model);
 
-            var user = new IdentityUser
+            var user = new ApplicationUser
             {
                 UserName = model.Email,
                 Email = model.Email
@@ -43,22 +42,21 @@ namespace sumile.Controllers
             if (result.Succeeded)
             {
                 await _signInManager.SignInAsync(user, isPersistent: false);
-                return RedirectToAction("MyPage", "Account");
+                // ログイン後はシフト一覧（ShiftController.Index）にリダイレクト
+                return RedirectToAction("Index", "Shift");
             }
 
-            // ここでエラーをログ出力
             foreach (var error in result.Errors)
             {
-                // 例として Console.WriteLine で出力（Visual Studio の出力ウィンドウに表示されます）
+                // エラー内容をログ出力および ModelState に追加
                 Console.WriteLine(error.Description);
-                // または、ログフレームワークがあれば適宜記録する
                 ModelState.AddModelError(string.Empty, error.Description);
             }
 
             return View(model);
         }
-        // ========== ログイン ==========
 
+        // ========== ログイン ==========
         [HttpGet]
         public IActionResult Login(string returnUrl = null)
         {
@@ -79,31 +77,21 @@ namespace sumile.Controllers
 
             if (result.Succeeded)
             {
-                // ログイン成功 → MyPage へ
-                return RedirectToAction("MyPage");
+                // ログイン成功 → シフト一覧へリダイレクト
+                return RedirectToAction("Index", "Shift");
             }
 
-            // ログイン失敗
             ModelState.AddModelError(string.Empty, "ログインに失敗しました。");
             return View(model);
         }
 
         // ========== ログアウト ==========
-
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Logout()
         {
             await _signInManager.SignOutAsync();
             return RedirectToAction("Index", "Home");
-        }
-
-        // ========== ログイン後の画面（マイページ例） ==========
-        [HttpGet]
-        [Authorize] // ログイン中のみアクセス可能にする場合
-        public IActionResult MyPage()
-        {
-            return View();
         }
     }
 }

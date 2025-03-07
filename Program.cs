@@ -1,37 +1,35 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using sumile.Data; // 自分のDbContextの名前空間
+using sumile.Data;
+using sumile.Models;
+using sumile.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// DbContext の登録（Npgsqlを使用）
+// --- サービス登録 ---
+
+// appsettings.json に設定した DefaultConnection を利用（例: PostgreSQL）
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Identity の登録（パスワードポリシーを緩和）
-builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
-{
-    // パスワードの設定を緩和（開発・テスト用の設定です）
-    options.Password.RequiredLength = 4;
-    options.Password.RequireDigit = false;
-    options.Password.RequireLowercase = false;
-    options.Password.RequireUppercase = false;
-    options.Password.RequireNonAlphanumeric = false;
-    options.SignIn.RequireConfirmedAccount = false;
-})
-.AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
+// Identity の設定：ApplicationUser と IdentityRole を使用
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
 
-// MVC と Razor Pages の追加
+// MVC 用のサービス登録
 builder.Services.AddControllersWithViews();
-builder.Services.AddRazorPages();
+
+// カスタムサービスの DI 登録
+builder.Services.AddScoped<IShiftService, ShiftService>();
 
 var app = builder.Build();
 
+// --- HTTP リクエストパイプラインの設定 ---
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
+    // HSTS の使用（デフォルトは 30 日）
     app.UseHsts();
 }
 
@@ -40,13 +38,13 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-app.UseAuthentication(); // Identity を利用するため必須
+// 認証・認可のミドルウェア
+app.UseAuthentication();
 app.UseAuthorization();
 
-// MVCルート + RazorPages (Identity UI 用)
+// デフォルトのルーティング設定
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
-app.MapRazorPages();
 
 app.Run();
