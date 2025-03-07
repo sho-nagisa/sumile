@@ -1,34 +1,60 @@
-﻿@model IEnumerable<sumile.Models.Shift>
-
-@{
-    ViewData["Title"] = "シフト一覧";
+﻿@{
+    ViewData["Title"] = "シフト閲覧";
+    // Controller で ViewBag.Users、ViewBag.Dates、ViewBag.Submissions をセットしている前提
+    var users = ViewBag.Users as List<sumile.Models.ApplicationUser> ?? new List<sumile.Models.ApplicationUser>();
+    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
+    var submissions = ViewBag.Submissions as List<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
 }
+<div style="text-align: right;">
+    Logged in ID: @ViewBag.LoggedInUserId
+</div>
 
-<h2>シフト一覧</h2>
+<h2>シフト閲覧</h2>
 
-<table class="table">
+<table class="table table-bordered">
     <thead>
         <tr>
-            <th>日付</th>
-            <th>シフトタイプ</th>
-            <th>最大人数</th>
-            <th></th>
+            <th>ユーザー / 日付</th>
+            @foreach (var date in dates)
+            {
+                <th>@date.ToString("MM/dd")</th>
+            }
         </tr>
     </thead>
     <tbody>
-    @foreach (var shift in Model)
-    {
-        <tr>
-            <td>@shift.Date.ToShortDateString()</td>
-            <td>@shift.ShiftType</td>
-            <td>@shift.MaxCapacity</td>
-            <td>
-                <a asp-action="Edit" asp-route-id="@shift.Id">編集</a> |
-                <a asp-action="Delete" asp-route-id="@shift.Id">削除</a>
-            </td>
-        </tr>
-    }
+        @foreach (var user in users)
+        {
+            <tr>
+                <td>@(string.IsNullOrEmpty(user.Name) ? "未登録" : user.Name) (@user.Email)</td>
+                @foreach (var date in dates)
+                {
+                    <td>
+                        @{
+                            // ユーザーごと、日付ごとの提出情報を抽出
+                            var userSubmissions = submissions
+                            .Where(s => s.UserId == user.Id && s.Date.Date == date.Date)
+                            .OrderBy(s => s.ShiftType)
+                            .ToList();
+                        }
+                        @if (userSubmissions.Any())
+                        {
+                            foreach (var sub in userSubmissions)
+                            {
+                                <div>@sub.ShiftType</div>
+                            }
+                        }
+                        else
+                        {
+                            <div>－</div>
+                        }
+                    </td>
+                }
+            </tr>
+        }
     </tbody>
 </table>
 
-<a asp-action="Create" class="btn btn-primary">新規シフト作成</a>
+<!-- 右上にシフト提出ボタン -->
+<div style="text-align:right; margin-top:10px;">
+    <a asp-controller="Shift" asp-action="Submission" class="btn btn-primary">シフト提出</a>
+</div>

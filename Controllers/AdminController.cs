@@ -1,18 +1,22 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using sumile.Data;
 using sumile.Models;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
 
 namespace sumile.Controllers
 {
-    // 管理者だけアクセスできるようにする場合は、[Authorize(Roles="Administrator")]などを付与
     public class AdminController : Controller
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ApplicationDbContext _context;
+
+        // シフト提出期間を保持するstatic変数（必要に応じて利用）
+        public static DateTime? SubmissionPeriodStart { get; set; }
+        public static DateTime? SubmissionPeriodEnd { get; set; }
 
         public AdminController(UserManager<ApplicationUser> userManager, ApplicationDbContext context)
         {
@@ -20,79 +24,99 @@ namespace sumile.Controllers
             _context = context;
         }
 
-        // ユーザー一覧の表示
+        // 管理者用：提出シフト一覧をユーザーごとに表示する (Index)
+        [HttpGet]
         public async Task<IActionResult> Index()
         {
-            var users = await _userManager.Users.ToListAsync();
-            return View(users);
+            // すべての提出シフト情報をユーザー情報とともに取得
+            var submissions = await _context.ShiftSubmissions
+                .Include(s => s.User)
+                .OrderBy(s => s.User.Name)
+                .ThenBy(s => s.Date)
+                .ToListAsync();
+
+            return View(submissions);
         }
 
-        // ユーザー昇格: UserType を "Veteran" に変更
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Promote(string userId)
-        {
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) return NotFound();
-
-            user.UserType = "Veteran";
-            await _userManager.UpdateAsync(user);
-
-            return RedirectToAction(nameof(Index));
-        }
-
-        // ユーザー降格: UserType を "Normal" に変更 (等)
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Demote(string userId)
-        {
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) return NotFound();
-
-            user.UserType = "Normal";
-            await _userManager.UpdateAsync(user);
-
-            return RedirectToAction(nameof(Index));
-        }
-
-        // シフト一覧 (管理者用)
-        public async Task<IActionResult> ShiftList()
-        {
-            var shifts = await _context.Shifts.ToListAsync();
-            return View(shifts);
-        }
-
-        // シフト手動編集フォーム
+        // 管理者用：シフト募集期間設定画面 (GET)
         [HttpGet]
-        public async Task<IActionResult> EditShift(int id)
+        public async Task<IActionResult> SetRecruitmentPeriod()
         {
-            var shift = await _context.Shifts.FindAsync(id);
-            if (shift == null) return NotFound();
-
-            return View(shift);
+            // DBから既存の募集期間設定を取得。なければデフォルト値を使用
+            var recruitmentPeriod = await _context.RecruitmentPeriods.FirstOrDefaultAsync();
+            if (recruitmentPeriod == null)
+            {
+                recruitmentPeriod = new RecruitmentPeriod
+                {
+                    StartDate = DateTime.Today,
+                    EndDate = DateTime.Today.AddDays(9)  // デフォルトで10日間
+                };
+            }
+            var model = new RecruitmentPeriodViewModel
+            {
+                StartDate = recruitmentPeriod.StartDate,
+                EndDate = recruitmentPeriod.EndDate
+            };
+            return View(model);
         }
 
-        // シフト手動編集の保存 (POST)
+        // 管理者用：シフト募集期間設定の保存 (POST)
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> EditShift(Shift model)
+        public async Task<IActionResult> SetRecruitmentPeriod(RecruitmentPeriodViewModel model)
         {
-            if (!ModelState.IsValid)
+            if (ModelState.IsValid)
             {
-                return View(model);
+                // DateTime 値を UTC に変換してから保存する
+                var startUtc = DateTime.SpecifyKind(model.StartDate, DateTimeKind.Utc);
+                var endUtc = DateTime.SpecifyKind(model.EndDate, DateTimeKind.Utc);
+
+                var recruitmentPeriod = await _context.RecruitmentPeriods.FirstOrDefaultAsync();
+                if (recruitmentPeriod == null)
+                {
+                    recruitmentPeriod = new RecruitmentPeriod
+                    {
+                        StartDate = startUtc,
+                        EndDate = endUtc
+                    };
+                    _context.RecruitmentPeriods.Add(recruitmentPeriod);
+                }
+                else
+                {
+                    recruitmentPeriod.StartDate = startUtc;
+                    recruitmentPeriod.EndDate = endUtc;
+                    _context.RecruitmentPeriods.Update(recruitmentPeriod);
+                }
+                await _context.SaveChangesAsync();
+                return RedirectToAction("Index");
             }
+            return View(model);
+        }
 
-            var shift = await _context.Shifts.FindAsync(model.Id);
-            if (shift == null) return NotFound();
+        // 管理者用：シフト提出期間設定画面 (GET)
+        [HttpGet]
+        public IActionResult SetSubmissionPeriod()
+        {
+            var model = new SubmissionPeriodViewModel
+            {
+                StartDate = SubmissionPeriodStart ?? DateTime.Today,
+                EndDate = SubmissionPeriodEnd ?? DateTime.Today.AddDays(9)
+            };
+            return View(model);
+        }
 
-            // 必要な項目を更新
-            shift.Date = model.Date;
-            shift.ShiftType = model.ShiftType;
-            shift.MaxCapacity = model.MaxCapacity;
-
-            await _context.SaveChangesAsync();
-
-            return RedirectToAction(nameof(ShiftList));
+        // 管理者用：シフト提出期間設定の保存 (POST)
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult SetSubmissionPeriod(SubmissionPeriodViewModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                SubmissionPeriodStart = model.StartDate;
+                SubmissionPeriodEnd = model.EndDate;
+                return RedirectToAction("Index");
+            }
+            return View(model);
         }
     }
 }

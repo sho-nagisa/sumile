@@ -1,0 +1,27 @@
+﻿@model sumile.Models.RecruitmentPeriodViewModel
+
+@{
+    ViewData["Title"] = "シフト募集期間設定";
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<form asp-action="SetRecruitmentPeriod" method="post">
+    <div class="form-group">
+        <label asp-for="StartDate"></label>
+        <input asp-for="StartDate" class="form-control" />
+        <span asp-validation-for="StartDate" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="EndDate"></label>
+        <input asp-for="EndDate" class="form-control" />
+        <span asp-validation-for="EndDate" class="text-danger"></span>
+    </div>
+    <button type="submit" class="btn btn-primary">設定する</button>
+</form>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

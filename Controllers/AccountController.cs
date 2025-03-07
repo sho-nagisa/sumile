@@ -77,13 +77,14 @@ namespace sumile.Controllers
 
             if (result.Succeeded)
             {
-                // ログイン成功 → シフト一覧へリダイレクト
+                // ログイン成功時、シフト一覧に遷移するように変更
                 return RedirectToAction("Index", "Shift");
             }
 
             ModelState.AddModelError(string.Empty, "ログインに失敗しました。");
             return View(model);
         }
+
 
         // ========== ログアウト ==========
         [HttpPost]

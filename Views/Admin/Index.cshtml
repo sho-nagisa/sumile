@@ -1,0 +1,46 @@
+﻿@model IEnumerable<sumile.Models.ShiftSubmission>
+
+@{
+    ViewData["Title"] = "提出シフト一覧 (管理者)";
+    // ShiftSubmission をユーザーごとにグループ化
+    var submissionsByUser = Model
+        .Where(s => s.User != null)
+        .GroupBy(s => s.User.Name)
+        .OrderBy(g => g.Key);
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<!-- 募集期間設定ページへの遷移ボタン -->
+<div style="text-align:right; margin-bottom:10px;">
+    <a asp-controller="Admin" asp-action="SetRecruitmentPeriod" class="btn btn-primary">募集期間設定</a>
+</div>
+
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>ユーザー名</th>
+            <th>メール</th>
+            <th>提出シフト</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var group in submissionsByUser)
+        {
+            // 各ユーザーごとに1行とし、提出したシフトの情報（日付・シフト種類・提出日時）を改行で表示
+            var firstSubmission = group.First();
+            <tr>
+                <td>@group.Key</td>
+                <td>@firstSubmission.User.Email</td>
+                <td>
+                    @foreach (var submission in group.OrderBy(s => s.Date))
+                    {
+                        <div>
+                            @submission.Date.ToString("MM/dd") - @submission.ShiftType (@submission.SubmittedAt?.ToString("yyyy-MM-dd HH:mm"))
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

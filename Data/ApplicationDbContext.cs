@@ -12,7 +12,9 @@ namespace sumile.Data
         }
 
         public DbSet<Shift> Shifts { get; set; }
+        public DbSet<ShiftSubmission> ShiftSubmissions { get; set; }
         public DbSet<ShiftAssignment> ShiftAssignments { get; set; }
         public DbSet<ShiftExchange> ShiftExchanges { get; set; }
+        public DbSet<RecruitmentPeriod> RecruitmentPeriods { get; set; }
     }
 }
