@@ -6,5 +6,6 @@ namespace sumile.Models
     {
         public string Name { get; set; }
         public string UserType { get; set; } = "Normal";
+        public int CustomId { get; set; }
     }
 }

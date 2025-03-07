@@ -6,9 +6,19 @@ using sumile.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- サービス登録 ---
+// --- 環境変数から接続文字列を取得 ---
+var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 
-// appsettings.json に設定した DefaultConnection を利用（例: PostgreSQL）
+// 接続文字列が設定されていない場合のエラーハンドリング
+if (string.IsNullOrEmpty(connectionString))
+{
+    throw new InvalidOperationException("DB_CONNECTION_STRING 環境変数が設定されていません。");
+}
+
+// 設定オブジェクトに接続文字列を追加
+builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+
+// --- サービス登録 ---
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 

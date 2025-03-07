@@ -5,16 +5,17 @@ namespace sumile.Models
     public class RegisterViewModel
     {
         [Required]
-        [EmailAddress]
-        public string Email { get; set; }
+        [Display(Name = "名前")]
+        public string Name { get; set; }
 
         [Required]
         [DataType(DataType.Password)]
+        [Display(Name = "パスワード")]
         public string Password { get; set; }
 
         [DataType(DataType.Password)]
-        [Display(Name = "Confirm Password")]
-        [Compare("Password", ErrorMessage = "Passwords do not match.")]
+        [Display(Name = "パスワード確認")]
+        [Compare("Password", ErrorMessage = "パスワードが一致しません。")]
         public string ConfirmPassword { get; set; }
     }
 }

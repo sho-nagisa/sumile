@@ -1,7 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
-using sumile.Models;  // ApplicationUser、ViewModel などの名前空間
+using sumile.Models;
 using System.Threading.Tasks;
+using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 
 namespace sumile.Controllers
@@ -32,10 +33,26 @@ namespace sumile.Controllers
             if (!ModelState.IsValid)
                 return View(model);
 
+            // 既存ユーザーの CustomId を取得して、最も小さい空いている値を決定する
+            int newCustomId = 1;
+            var existingIds = _userManager.Users
+                                .Select(u => u.CustomId)
+                                .OrderBy(id => id)
+                                .ToList();
+            foreach (var id in existingIds)
+            {
+                if (id == newCustomId)
+                    newCustomId++;
+                else
+                    break;
+            }
+
             var user = new ApplicationUser
             {
-                UserName = model.Email,
-                Email = model.Email
+                // メールアドレスは使わず、ユーザー名に名前を設定
+                UserName = model.Name,
+                Name = model.Name,
+                CustomId = newCustomId
             };
 
             var result = await _userManager.CreateAsync(user, model.Password);
@@ -49,7 +66,7 @@ namespace sumile.Controllers
             foreach (var error in result.Errors)
             {
                 // エラー内容をログ出力および ModelState に追加
-                Console.WriteLine(error.Description);
+                System.Console.WriteLine(error.Description);
                 ModelState.AddModelError(string.Empty, error.Description);
             }
 
@@ -84,7 +101,6 @@ namespace sumile.Controllers
             ModelState.AddModelError(string.Empty, "ログインに失敗しました。");
             return View(model);
         }
-
 
         // ========== ログアウト ==========
         [HttpPost]
