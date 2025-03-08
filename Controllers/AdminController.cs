@@ -26,17 +26,41 @@ namespace sumile.Controllers
 
         // 管理者用：提出シフト一覧をユーザーごとに表示する (Index)
         [HttpGet]
+        [HttpGet]
         public async Task<IActionResult> Index()
         {
-            // すべての提出シフト情報をユーザー情報とともに取得
-            var submissions = await _context.ShiftSubmissions
-                .Include(s => s.User)
-                .OrderBy(s => s.User.Name)
-                .ThenBy(s => s.Date)
+            int days = 10; // 10日分のデータを表示
+            var startDate = DateTime.Today;
+            var dates = Enumerable.Range(0, days).Select(i => startDate.AddDays(i)).ToList();
+
+            // **users を dynamic に変換する**
+            var users = await _userManager.Users
+                .Select(u => new
+                {
+                    Id = u.Id,
+                    CustomId = u.CustomId,
+                    Name = u.Name
+                })
                 .ToListAsync();
 
-            return View(submissions);
+            // **明示的に dynamic にキャスト**
+            var dynamicUsers = users.Select(u => (dynamic)u).ToList();
+
+            // `submissions` が null にならないように取得
+            var submissions = await _context.ShiftSubmissions
+                .Include(s => s.User)
+                .ToListAsync();
+
+            // **ViewBag に dynamicUsers をセット**
+            ViewBag.Users = dynamicUsers;
+            ViewBag.Dates = dates ?? new List<DateTime>();
+            ViewBag.Submissions = submissions ?? new List<ShiftSubmission>();
+
+            return View();
         }
+
+
+
 
         // 管理者用：シフト募集期間設定画面 (GET)
         [HttpGet]

@@ -8,6 +8,8 @@ namespace sumile.Models
         [Display(Name = "名前")]
         public string Name { get; set; }
 
+        public int CustomId { get; set; } // 自動的に割り当てられるため、入力不要
+
         [Required]
         [DataType(DataType.Password)]
         [Display(Name = "パスワード")]

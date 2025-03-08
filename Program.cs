@@ -3,10 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using sumile.Data;
 using sumile.Models;
 using sumile.Services;
+using DotNetEnv;  // 追加
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 環境変数から接続文字列を取得 ---
+// --- 環境変数を `.env` から読み込む（ローカル開発用） ---
+Env.Load();
+
+// 環境変数 `DB_CONNECTION_STRING` を取得
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 
 // 接続文字列が設定されていない場合のエラーハンドリング

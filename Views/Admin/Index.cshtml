@@ -1,45 +1,53 @@
-﻿@model IEnumerable<sumile.Models.ShiftSubmission>
-
-@{
+﻿@{
     ViewData["Title"] = "提出シフト一覧 (管理者)";
-    // ShiftSubmission をユーザーごとにグループ化
-    var submissionsByUser = Model
-        .Where(s => s.User != null)
-        .GroupBy(s => s.User.Name)
-        .OrderBy(g => g.Key);
+    var users = ViewBag.Users as IEnumerable<dynamic>;  // { Id, CustomId, Name }
+    var dates = ViewBag.Dates as List<DateTime>;
+    var submissions = ViewBag.Submissions as IEnumerable<dynamic>;
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">
+        @TempData["SuccessMessage"]
+    </div>
 }
 
 <h2>@ViewData["Title"]</h2>
 
 <!-- 募集期間設定ページへの遷移ボタン -->
-<div style="text-align:right; margin-bottom:10px;">
-    <a asp-controller="Admin" asp-action="SetRecruitmentPeriod" class="btn btn-primary">募集期間設定</a>
+<div class="mb-3">
+    <a asp-action="SetRecruitmentPeriod" class="btn btn-primary">募集期間設定</a>
 </div>
 
 <table class="table table-bordered">
     <thead>
         <tr>
-            <th>ユーザー名</th>
-            <th>メール</th>
-            <th>提出シフト</th>
+            <th>ユーザー</th>
+            @foreach (var date in dates)
+            {
+                <th>@date.ToString("M/d")</th> <!-- "3/11" のように表示 -->
+            }
         </tr>
     </thead>
     <tbody>
-        @foreach (var group in submissionsByUser)
+        @foreach (var user in users)
         {
-            // 各ユーザーごとに1行とし、提出したシフトの情報（日付・シフト種類・提出日時）を改行で表示
-            var firstSubmission = group.First();
             <tr>
-                <td>@group.Key</td>
-                <td>@firstSubmission.User.Email</td>
-                <td>
-                    @foreach (var submission in group.OrderBy(s => s.Date))
-                    {
-                        <div>
-                            @submission.Date.ToString("MM/dd") - @submission.ShiftType (@submission.SubmittedAt?.ToString("yyyy-MM-dd HH:mm"))
-                        </div>
-                    }
-                </td>
+                <td>@user.CustomId (@user.Name)</td>
+                @foreach (var date in dates)
+                {
+                    var submission = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd"));
+                    <td>
+                        @if (submission != null)
+                        {
+                            @submission.ShiftType
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </td>
+                }
             </tr>
         }
     </tbody>

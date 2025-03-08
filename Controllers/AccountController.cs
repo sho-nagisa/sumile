@@ -4,6 +4,8 @@ using sumile.Models;
 using System.Threading.Tasks;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
 
 namespace sumile.Controllers
 {
@@ -24,21 +26,30 @@ namespace sumile.Controllers
         [HttpGet]
         public IActionResult Register()
         {
-            return View();
+
+            // 空の RegisterViewModel インスタンスを渡す
+            return View(new RegisterViewModel());
         }
 
         [HttpPost]
+        [HttpPost]
         public async Task<IActionResult> Register(RegisterViewModel model)
         {
+            Debug.WriteLine("Register メソッドが呼ばれました"); // ここに到達するか確認
             if (!ModelState.IsValid)
+            {
+                Debug.WriteLine("ModelState が無効");
                 return View(model);
+            }
 
-            // 既存ユーザーの CustomId を取得して、最も小さい空いている値を決定する
+            Debug.WriteLine("ModelState は有効");
+            // CustomId を自動採番（現在の最小空き番号を検索）
             int newCustomId = 1;
             var existingIds = _userManager.Users
                                 .Select(u => u.CustomId)
                                 .OrderBy(id => id)
                                 .ToList();
+            Debug.WriteLine($"既存のカスタムID: {string.Join(", ", existingIds)}");
             foreach (var id in existingIds)
             {
                 if (id == newCustomId)
@@ -46,30 +57,38 @@ namespace sumile.Controllers
                 else
                     break;
             }
-
+            Debug.WriteLine($"新規 CustomId: {newCustomId}");
             var user = new ApplicationUser
             {
-                // メールアドレスは使わず、ユーザー名に名前を設定
-                UserName = model.Name,
-                Name = model.Name,
-                CustomId = newCustomId
+                UserName = newCustomId.ToString(), // カスタムIDを文字列として UserName に設定
+                CustomId = newCustomId,
+                Name = model.Name  // 登録された名前を設定
             };
-
             var result = await _userManager.CreateAsync(user, model.Password);
+            Debug.WriteLine($"ユーザーオブジェクト作成: UserName={user.UserName}, CustomId={user.CustomId}, Name={user.Name}");
+            if (!result.Succeeded)
+            {
+                Debug.WriteLine("ユーザー作成失敗！エラー内容:");
+                foreach (var error in result.Errors)
+                {
+                    Debug.WriteLine($"エラー: {error.Code} - {error.Description}");
+                }
+                return View(model);
+            }
             if (result.Succeeded)
             {
+                Debug.WriteLine("ユーザー作成失敗！エラー内容:");
                 await _signInManager.SignInAsync(user, isPersistent: false);
-                // ログイン後はシフト一覧（ShiftController.Index）にリダイレクト
+                TempData["SuccessMessage"] = "登録が成功しました";
                 return RedirectToAction("Index", "Shift");
             }
+            Debug.WriteLine("登録成功 - Shift/Index にリダイレクト");
 
             foreach (var error in result.Errors)
             {
-                // エラー内容をログ出力および ModelState に追加
-                System.Console.WriteLine(error.Description);
                 ModelState.AddModelError(string.Empty, error.Description);
             }
-
+            TempData["SuccessMessage"] = "登録が成功しました";
             return View(model);
         }
 
@@ -89,12 +108,19 @@ namespace sumile.Controllers
             if (!ModelState.IsValid)
                 return View(model);
 
+            // CustomId から User を取得
+            var user = await _userManager.Users.FirstOrDefaultAsync(u => u.CustomId == model.CustomId);
+            if (user == null)
+            {
+                ModelState.AddModelError(string.Empty, "ログインに失敗しました。");
+                return View(model);
+            }
+
             var result = await _signInManager.PasswordSignInAsync(
-                model.Email, model.Password, model.RememberMe, lockoutOnFailure: false);
+                user.UserName, model.Password, model.RememberMe, lockoutOnFailure: false);
 
             if (result.Succeeded)
             {
-                // ログイン成功時、シフト一覧に遷移するように変更
                 return RedirectToAction("Index", "Shift");
             }
 

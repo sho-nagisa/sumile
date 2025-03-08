@@ -1,57 +1,37 @@
 ﻿@model List<DateTime>
-
 @{
-    // シフトの種類を仮に「Morning」「Night」の2種類とする
-    var shiftTypes = new[] { "Morning", "Night" };
+    ViewBag.Title = "シフト提出";
 }
 
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8" />
-    <title>シフト提出</title>
-</head>
-<body>
-    <h1>シフト提出フォーム</h1>
-
-    <!-- フォームは ShiftController の SubmitShifts にポストする -->
-    <form asp-action="SubmitShifts" method="post">
-        <table border="1">
-            <thead>
+<h2>シフト提出</h2>
+<form method="post" action="@Url.Action("SubmitShifts", "Shift")">
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>日付</th>
+                <th>シフトタイプ</th>
+                <th>選択</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var date in Model)
+            {
                 <tr>
-                    <th>日付</th>
-                    @foreach (var shiftType in shiftTypes)
-                    {
-                        <th>@shiftType</th>
-                    }
+                    <td>@date.ToString("yyyy-MM-dd")</td>
+                    <td>
+                        <select name="shiftType">
+                            <option value="Morning">Morning</option>
+                            <option value="Afternoon">Afternoon</option>
+                            <option value="Night">Night</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="checkbox" name="selectedShifts" value="@date.ToString("yyyy-MM-dd")|ShiftType|true" />
+                    </td>
                 </tr>
-            </thead>
-            <tbody>
-                @foreach (var date in Model)
-                {
-                    <tr>
-                        <td>@date.ToString("yyyy-MM-dd")</td>
-
-                        @foreach (var shiftType in shiftTypes)
-                        {
-                            <td style="text-align: center;">
-                                <!--
-                                    チェックボックスがオンなら
-                                    "2025-03-10|Morning|true" のような形式で送信
-                                -->
-                                <input type="checkbox"
-                                       name="selectedShifts"
-                                       value="@($"{date:yyyy-MM-dd}|{shiftType}|true")" />
-                            </td>
-                        }
-                    </tr>
-                }
-            </tbody>
-        </table>
-
-        <br />
-        <button type="submit">提出</button>
-    </form>
-
-</body>
-</html>
+            }
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-primary">提出</button>
+</form>
+<a href="@Url.Action("Index", "Shift")" class="btn btn-secondary">戻る</a>
