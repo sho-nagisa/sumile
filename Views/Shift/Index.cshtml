@@ -1,9 +1,8 @@
 ﻿@{
     ViewData["Title"] = "シフト一覧";
-    var users = ViewBag.Users as IEnumerable<dynamic>;  // { Id, CustomId, Name }
-    var dates = ViewBag.Dates as List<DateTime>;
-    var submissions = ViewBag.Submissions as IEnumerable<dynamic>;
-    var loggedInUserId = ViewBag.LoggedInUserId as string;
+    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();  // { Id, CustomId, Name }
+    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
+    var submissions = ViewBag.Submissions as IEnumerable<dynamic> ?? new List<dynamic>();
 }
 
 @if (TempData["SuccessMessage"] != null)
@@ -20,13 +19,20 @@
     <a asp-action="Submission" class="btn btn-primary">シフトを提出する</a>
 </div>
 
-<table class="table table-bordered">
+<table class="table table-bordered text-center">
     <thead>
         <tr>
-            <th>ユーザー</th>
+            <th rowspan="2">ユーザー</th> <!-- 左端のユーザー列を2行分占有 -->
             @foreach (var date in dates)
             {
-                <th>@date.ToString("yyyy-MM-dd")</th>
+                <th colspan="2">@date.ToString("M/d")</th> <!-- 各日付で2列（朝・夜）を占有 -->
+            }
+        </tr>
+        <tr>
+            @foreach (var date in dates)
+            {
+                <th>上 </th>
+                <th>敷 </th>
             }
         </tr>
     </thead>
@@ -34,20 +40,16 @@
         @foreach (var user in users)
         {
             <tr>
+                <!-- 左端のユーザーID -->
                 <td>@user.CustomId</td>
+
                 @foreach (var date in dates)
                 {
-                    var submission = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd"));
-                    <td>
-                        @if (submission != null)
-                        {
-                            @submission.ShiftType
-                        }
-                        else
-                        {
-                            <span>-</span>
-                        }
-                    </td>
+                    var morningShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Morning");
+                    var nightShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Night");
+
+                    <td>@(morningShift != null ? "〇" : "×")</td>
+                    <td>@(nightShift != null ? "〇" : "×")</td>
                 }
             </tr>
         }

@@ -1,0 +1,111 @@
+﻿@{
+    ViewData["Title"] = "シフト編集";
+    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
+    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
+    var submissions = ViewBag.Submissions as IEnumerable<dynamic> ?? new List<dynamic>();
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<form asp-action="UpdateShifts" method="post" id="updateForm">
+    @Html.AntiForgeryToken() <!-- これでアンチフォージェリートークンが自動生成されます -->
+
+    <table class="table table-bordered text-center">
+        <thead>
+            <tr>
+                <th rowspan="2">ユーザー</th>
+                @foreach (var date in dates)
+                {
+                    <th colspan="2">@date.ToString("M月d日")</th>
+                }
+            </tr>
+            <tr>
+                @foreach (var date in dates)
+                {
+                    <th>朝</th>
+                    <th>夜</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in users)
+            {
+                <tr>
+                    <td>@user.CustomId (@user.Name)</td>
+                    @foreach (var date in dates)
+                    {
+                        var morningShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Morning");
+                        var nightShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Night");
+
+                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Morning">
+                            @(morningShift != null ? "〇" : "×")
+                        </td>
+                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Night">
+                            @(nightShift != null ? "〇" : "×")
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <button type="button" id="saveChanges" class="btn btn-primary">変更を保存</button>
+</form>
+
+@section Scripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const cells = document.querySelectorAll(".editable-cell");
+            let updates = [];
+
+            cells.forEach(cell => {
+                cell.addEventListener("click", function () {
+                    let newValue = this.textContent.trim() === "〇" ? "×" : "〇";
+                    this.textContent = newValue;
+
+                    let shiftData = {
+                        userId: this.dataset.user,
+                        date: this.dataset.date,
+                        shiftType: this.dataset.shift,
+                        isSelected: (newValue === "〇")
+                    };
+
+                    let existingIndex = updates.findIndex(u =>
+                        u.userId === shiftData.userId &&
+                        u.date === shiftData.date &&
+                        u.shiftType === shiftData.shiftType
+                    );
+                    if (existingIndex >= 0) {
+                        updates[existingIndex] = shiftData;
+                    } else {
+                        updates.push(shiftData);
+                    }
+                });
+            });
+
+            document.getElementById("saveChanges").addEventListener("click", function () {
+                fetch("/Admin/UpdateShifts", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "RequestVerificationToken": document.querySelector('input[name="__RequestVerificationToken"]').value
+                    },
+                    body: JSON.stringify(updates)
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert("シフトを更新しました");
+                            location.reload();
+                        } else {
+                            alert("更新に失敗しました");
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert("エラーが発生しました");
+                    });
+            });
+        });
+    </script>
+}

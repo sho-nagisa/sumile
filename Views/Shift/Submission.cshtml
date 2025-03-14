@@ -1,37 +1,66 @@
-﻿@model List<DateTime>
-@{
-    ViewBag.Title = "シフト提出";
+﻿@{
+    ViewData["Title"] = "シフト提出";
+    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
 }
 
-<h2>シフト提出</h2>
-<form method="post" action="@Url.Action("SubmitShifts", "Shift")">
-    <table class="table table-bordered">
+<h2>@ViewData["Title"]</h2>
+
+<form asp-action="SubmitShifts" method="post" id="shiftForm">
+    <input type="hidden" name="selectedShifts" id="selectedShifts" />
+
+    <table class="table table-bordered text-center">
         <thead>
             <tr>
                 <th>日付</th>
-                <th>シフトタイプ</th>
-                <th>選択</th>
+                <th>朝 (Morning)</th>
+                <th>夜 (Night)</th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var date in Model)
+            @foreach (var date in dates)
             {
                 <tr>
                     <td>@date.ToString("yyyy-MM-dd")</td>
-                    <td>
-                        <select name="shiftType">
-                            <option value="Morning">Morning</option>
-                            <option value="Afternoon">Afternoon</option>
-                            <option value="Night">Night</option>
-                        </select>
-                    </td>
-                    <td>
-                        <input type="checkbox" name="selectedShifts" value="@date.ToString("yyyy-MM-dd")|ShiftType|true" />
-                    </td>
+                    <td class="shift-cell" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Morning">×</td>
+                    <td class="shift-cell" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Night">×</td>
                 </tr>
             }
         </tbody>
     </table>
+
     <button type="submit" class="btn btn-primary">提出</button>
+    <a asp-action="Index" class="btn btn-secondary">戻る</a>
 </form>
-<a href="@Url.Action("Index", "Shift")" class="btn btn-secondary">戻る</a>
+
+@section Scripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const shiftCells = document.querySelectorAll(".shift-cell");
+            const selectedShiftsInput = document.getElementById("selectedShifts");
+
+            shiftCells.forEach(cell => {
+                cell.addEventListener("click", function () {
+                    if (this.textContent === "×") {
+                        this.textContent = "〇";
+                        this.classList.add("selected");
+                    } else {
+                        this.textContent = "×";
+                        this.classList.remove("selected");
+                    }
+                    updateSelectedShifts();
+                });
+            });
+
+            function updateSelectedShifts() {
+                let selectedShifts = [];
+                document.querySelectorAll(".shift-cell.selected").forEach(cell => {
+                    selectedShifts.push({
+                        date: cell.dataset.date,
+                        shiftType: cell.dataset.shift
+                    });
+                });
+                selectedShiftsInput.value = JSON.stringify(selectedShifts);
+            }
+        });
+    </script>
+}
