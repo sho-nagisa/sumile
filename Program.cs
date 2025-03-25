@@ -26,10 +26,17 @@ builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Identity の設定：ApplicationUser と IdentityRole を使用
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
-    .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddDefaultTokenProviders();
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    options.Password.RequiredLength = 6;  // 8文字以上
+    options.Password.RequireUppercase = false;  // 大文字不要
+    options.Password.RequireLowercase = true;   // 小文字必要
+    options.Password.RequireDigit = true;       // 数字必要
+    options.Password.RequireNonAlphanumeric = false; // 特殊文字不要
+})
+.AddEntityFrameworkStores<ApplicationDbContext>()
+.AddDefaultTokenProviders();
+
 
 // MVC 用のサービス登録
 builder.Services.AddControllersWithViews();

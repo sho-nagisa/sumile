@@ -32,7 +32,6 @@ namespace sumile.Controllers
         }
 
         [HttpPost]
-        [HttpPost]
         public async Task<IActionResult> Register(RegisterViewModel model)
         {
             Debug.WriteLine("Register メソッドが呼ばれました"); // ここに到達するか確認

@@ -50,6 +50,7 @@
     </table>
 
     <button type="button" id="saveChanges" class="btn btn-primary">変更を保存</button>
+    <a asp-action="Index" class="btn btn-secondary">戻る</a>
 </form>
 
 @section Scripts {
@@ -92,19 +93,19 @@
                     },
                     body: JSON.stringify(updates)
                 })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            alert("シフトを更新しました");
-                            location.reload();
-                        } else {
-                            alert("更新に失敗しました");
-                        }
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        alert("エラーが発生しました");
-                    });
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert("シフトを更新しました");
+                        location.reload();
+                    } else {
+                        alert("更新に失敗しました");
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("エラーが発生しました");
+                });
             });
         });
     </script>

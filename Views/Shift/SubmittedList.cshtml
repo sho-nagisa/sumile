@@ -1,0 +1,104 @@
+﻿@{
+    ViewData["Title"] = "シフト一覧（個人用）";
+
+    // コントローラで詰めたものを受け取る
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
+    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
+    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
+    var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission>
+                      ?? new List<sumile.Models.ShiftSubmission>();
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<!-- ★ 期間選択プルダウン (JavaScriptで ?periodId=◯◯ へ飛ぶ) -->
+<div style="margin-bottom: 1rem;">
+    <label for="periodSelect">表示期間：</label>
+    <select id="periodSelect">
+        @if (recruitmentPeriods != null)
+        {
+            foreach (var rp in recruitmentPeriods)
+            {
+                bool isSelected = (rp.Id == selectedPeriodId);
+
+                if (isSelected)
+                {
+                    <option value="@rp.Id" selected>
+                        @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
+                    </option>
+                }
+                else
+                {
+                    <option value="@rp.Id">
+                        @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
+                    </option>
+                }
+            }
+        }
+    </select>
+</div>
+
+<script>
+    document.getElementById('periodSelect')?.addEventListener('change', function () {
+        var pid = this.value;
+        // SubmissionList アクションに ?periodId=◯◯ を付けて再読み込み
+        window.location.href = '@Url.Action("SubmissionList", "Shift")?periodId=' + pid;
+    });
+</script>
+
+
+<!-- ★ シフト表示テーブル: 日付列を横並び + 2行ヘッダ + 〇× -->
+<table class="table table-bordered text-center">
+    <thead>
+        <tr>
+            <th rowspan="2">ユーザー</th>
+            @foreach (var date in dates)
+            {
+                <th colspan="2">@date.ToString("M/d")</th>
+            }
+        </tr>
+        <tr>
+            @foreach (var date in dates)
+            {
+                <th>上</th>
+                <th>敷</th>
+            }
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in users)
+        {
+            <tr>
+                <td>
+                    @user.CustomId (@user.Name)
+                </td>
+
+                @foreach (var date in dates)
+                {
+                    // 朝（"Morning"）
+                    var morningShift = submissions
+                    .FirstOrDefault(s =>
+                    s.UserId == user.Id
+                    && s.Date.Date == date.Date
+                    && s.ShiftType == "Morning"
+                    );
+
+                    // 夜（"Night"）
+                    var nightShift = submissions
+                    .FirstOrDefault(s =>
+                    s.UserId == user.Id
+                    && s.Date.Date == date.Date
+                    && s.ShiftType == "Night"
+                    );
+
+                    <td>@(morningShift != null ? "〇" : "×")</td>
+                    <td>@(nightShift != null ? "〇" : "×")</td>
+                }
+            </tr>
+        }
+    </tbody>
+</table>
+
+<!-- 戻るなど適宜ボタン -->
+<a asp-action="Index" controller="Home" class="btn btn-secondary">戻る</a>

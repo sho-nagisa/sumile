@@ -1,10 +1,16 @@
 ﻿@{
     ViewData["Title"] = "シフト一覧(管理者用)";
+
+    // AdminController の Index(int? periodId) などで渡している想定
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
+    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+
     var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();  // { Id, CustomId, Name }
     var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
     var submissions = ViewBag.Submissions as IEnumerable<dynamic> ?? new List<dynamic>();
 }
 
+<!-- 成功メッセージがあれば表示 -->
 @if (TempData["SuccessMessage"] != null)
 {
     <div class="alert alert-success">
@@ -14,26 +20,71 @@
 
 <h2>@ViewData["Title"]</h2>
 
-<a asp-action="SetRecruitmentPeriod" class="btn btn-primary">募集期間設定</a>
-<!-- 追加: シフト変更ボタン -->
+<!-- ★ ページ上部: ページ遷移ボタンとプルダウン(期間選択) -->
+<div style="margin-bottom: 1rem;">
+    <!-- 募集期間設定ページへ -->
+    <a href="@Url.Action("SetRecruitmentPeriod", "Admin")" class="btn btn-primary">
+        募集期間設定
+    </a>
 
-<a href="@Url.Action("EditShifts", "Admin")" class="btn btn-secondary">
-    シフト
-</a>
+    <!-- シフト編集ページへ -->
+    <a href="@Url.Action("EditShifts", "Admin")" class="btn btn-secondary">
+        シフト編集
+    </a>
+
+</div>
+
+<!-- ★ プルダウンで募集期間(periodId)を切り替える -->
+<div style="margin-bottom: 1rem;">
+    <label for="periodSelect">表示期間：</label>
+    <select id="periodSelect">
+        @if (recruitmentPeriods != null)
+        {
+            foreach (var rp in recruitmentPeriods)
+            {
+                bool isSelected = (rp.Id == selectedPeriodId);
+
+                // Razorのタグヘルパー制約回避のため if/else でselectedを出し分け
+                if (isSelected)
+                {
+                    <option value="@rp.Id" selected>
+                        @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
+                    </option>
+                }
+                else
+                {
+                    <option value="@rp.Id">
+                        @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
+                    </option>
+                }
+            }
+        }
+    </select>
+</div>
+
+<script>
+    document.getElementById('periodSelect')?.addEventListener('change', function () {
+        var pid = this.value;
+        // 同じIndexアクションへ ?periodId=◯◯ を付与して再読み込み
+        window.location.href = '@Url.Action("Index", "Admin")?periodId=' + pid;
+    });
+</script>
+
+<!-- ★ ここからテーブル (2行ヘッダで "上" "敷" を表示) -->
 <table class="table table-bordered text-center">
     <thead>
         <tr>
-            <th rowspan="2">ユーザー</th> <!-- 左端のユーザー列を2行分占有 -->
+            <th rowspan="2">ユーザー</th>
             @foreach (var date in dates)
             {
-                <th colspan="2">@date.ToString("M/d")</th> <!-- 各日付で2列（朝・夜）を占有 -->
+                <th colspan="2">@date.ToString("M/d")</th>
             }
         </tr>
         <tr>
             @foreach (var date in dates)
             {
-                <th>上 </th>
-                <th>敷 </th>
+                <th>上</th>
+                <th>敷</th>
             }
         </tr>
     </thead>
@@ -41,13 +92,23 @@
         @foreach (var user in users)
         {
             <tr>
-                <!-- 左端のユーザーID -->
-                <td>@user.CustomId</td>
+                <!-- 左端のユーザー -->
+                <td>@user.CustomId (@user.Name)</td>
 
                 @foreach (var date in dates)
                 {
-                    var morningShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Morning");
-                    var nightShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Night");
+                    // 朝(上)の提出情報を取得 ("Morning" かどうか)
+                    var morningShift = submissions.FirstOrDefault(s =>
+                    s.UserId == user.Id &&
+                    ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") &&
+                    s.ShiftType == "Morning"
+                    );
+                    // 夜(敷)の提出情報を取得 ("Night" かどうか)
+                    var nightShift = submissions.FirstOrDefault(s =>
+                    s.UserId == user.Id &&
+                    ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") &&
+                    s.ShiftType == "Night"
+                    );
 
                     <td>@(morningShift != null ? "〇" : "×")</td>
                     <td>@(nightShift != null ? "〇" : "×")</td>

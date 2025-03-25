@@ -17,8 +17,8 @@ namespace sumile.Models
         public ApplicationUser User { get; set; }
 
         // ユーザーがそのシフトを提出（選択）したか否か
+        public string ShiftStatus { get; set; }
         public bool IsSelected { get; set; }
-
         // 提出日時（更新時に記録）
         public DateTime? SubmittedAt { get; set; }
     }
