@@ -10,16 +10,18 @@ namespace sumile.Models
         [DataType(DataType.Date)]
         public DateTime Date { get; set; }
 
-        // 例: "Morning" または "Night"
         public string ShiftType { get; set; }
 
         public string UserId { get; set; }
         public ApplicationUser User { get; set; }
 
-        // ユーザーがそのシフトを提出（選択）したか否か
-        public string ShiftStatus { get; set; }
+        // ★ enumに置き換え
+        public ShiftState ShiftStatus { get; set; }
+
         public bool IsSelected { get; set; }
-        // 提出日時（更新時に記録）
+
         public DateTime? SubmittedAt { get; set; }
+
+        public string UserType { get; set; } // ←追加済み項目
     }
 }

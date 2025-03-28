@@ -3,7 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using sumile.Data;
 using sumile.Models;
 using sumile.Services;
-using DotNetEnv;  // 追加
+using DotNetEnv;  // .env読み込み用
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,15 +31,22 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
-    options.Password.RequiredLength = 6;  // 8文字以上
-    options.Password.RequireUppercase = false;  // 大文字不要
-    options.Password.RequireLowercase = true;   // 小文字必要
-    options.Password.RequireDigit = true;       // 数字必要
-    options.Password.RequireNonAlphanumeric = false; // 特殊文字不要
+    options.Password.RequiredLength = 6;
+    options.Password.RequireUppercase = false;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireDigit = true;
+    options.Password.RequireNonAlphanumeric = false;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
+// ★ セッションの追加（UserType保存のため）
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30); // セッションの有効時間
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
 
 // MVC 用のサービス登録
 builder.Services.AddControllersWithViews();
@@ -50,7 +60,6 @@ var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // HSTS の使用（デフォルトは 30 日）
     app.UseHsts();
 }
 
@@ -58,6 +67,9 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+// ★ セッションの使用（Authenticationより前でも後でも可）
+app.UseSession();
 
 // 認証・認可のミドルウェア
 app.UseAuthentication();

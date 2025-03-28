@@ -1,58 +1,79 @@
-﻿@model sumile.Models.ShiftIndexViewModel
+﻿@using System.Globalization
+
 @{
     ViewData["Title"] = "シフト一覧";
+
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
+    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
+    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
+    var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">
+        @TempData["SuccessMessage"]
+    </div>
 }
 
 <h2>@ViewData["Title"]</h2>
 
-<!-- ★ ログイン中のユーザー情報を表示 -->
-@if (!string.IsNullOrEmpty(Model.CurrentUserCustomId))
-{
-    <p>ログイン中: ID=@Model.CurrentUserCustomId / 名前=@Model.CurrentUserName</p>
-}
-
-<!-- シフト提出 + ログアウトボタン -->
 <div class="mb-3">
-    <!-- シフト提出画面に遷移するボタン -->
     <a asp-action="Submission" controller="Shift" class="btn btn-primary">
         シフトを提出する
     </a>
 
-    <!-- ログアウトボタン (POST用フォーム) -->
     <form asp-controller="Account" asp-action="Logout" method="post" style="display:inline;">
         @Html.AntiForgeryToken()
         <button type="submit" class="btn btn-danger">ログアウト</button>
     </form>
 
-    <!-- 新たな画面遷移ボタン：ログインユーザーの最新募集期間内のシフト一覧 -->
     <a asp-action="SubmittedList" controller="Shift" class="btn btn-info">
         提出シフト一覧
     </a>
 </div>
 
-<form method="get" asp-action="Index">
-    <select name="periodId" onchange="this.form.submit()">
-        @foreach (var rec in Model.RecruitmentPeriods)
+<div style="margin-bottom: 1rem;">
+    <label for="periodSelect">表示期間：</label>
+    <select id="periodSelect" class="form-select" style="width:auto; display:inline;">
+        @if (recruitmentPeriods != null)
         {
-            <option value="@rec.Id" selected="@(rec.Id == Model.SelectedPeriodId ? "selected" : null)">
-                @rec.StartDate.ToString("yyyy-MM-dd") - @rec.EndDate.ToString("yyyy-MM-dd")
-            </option>
+            foreach (var rp in recruitmentPeriods)
+            {
+                <option value="@rp.Id" selected="@(rp.Id == selectedPeriodId)">
+                    @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
+                </option>
+            }
         }
     </select>
-</form>
+</div>
 
+<script>
+    document.getElementById('periodSelect')?.addEventListener('change', function () {
+        var pid = this.value;
+        window.location.href = '@Url.Action("Index", "Shift")?periodId=' + pid;
+    });
+</script>
 
 <table class="table table-bordered text-center">
     <thead>
         <tr>
-            <th rowspan="2">ユーザー</th> <!-- 左端のユーザー列を2行分占有 -->
-            @foreach (var date in Model.Dates)
+            <th rowspan="3">ユーザー</th>
+            @foreach (var date in dates)
             {
-                <th colspan="2">@date.ToString("M/d")</th> <!-- 各日付で2列（朝・夜）を占有 -->
+                <th colspan="2">@date.ToString("M/d")</th>
             }
         </tr>
         <tr>
-            @foreach (var date in Model.Dates)
+            @foreach (var date in dates)
+            {
+                <th colspan="2">@date.ToString("ddd", new CultureInfo("ja-JP"))</th>
+            }
+        </tr>
+
+        <tr>
+            @foreach (var date in dates)
             {
                 <th>上</th>
                 <th>敷</th>
@@ -60,29 +81,35 @@
         </tr>
     </thead>
     <tbody>
-        @foreach (var user in Model.Users)
+        @foreach (var user in users)
         {
             <tr>
-                <!-- 左端のユーザーID -->
-                <td>@user.CustomId</td>
-
-                @foreach (var date in Model.Dates)
+                <td>@user.CustomId (@user.Name)</td>
+                @foreach (var date in dates)
                 {
-                    var morningShift = Model.Submissions.FirstOrDefault(s =>
-                        s.UserId == user.Id &&
-                        s.Date.ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") &&
-                        s.ShiftType == "Morning"
-                    );
-                    var nightShift = Model.Submissions.FirstOrDefault(s =>
-                        s.UserId == user.Id &&
-                        s.Date.ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") &&
-                        s.ShiftType == "Night"
-                    );
+                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Morning");
+                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Night");
 
-                    <td>@(morningShift != null ? "〇" : "×")</td>
-                    <td>@(nightShift != null ? "〇" : "×")</td>
+                    string morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
+                    string nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
+
+                    <td>@morningSymbol</td>
+                    <td>@nightSymbol</td>
                 }
             </tr>
         }
     </tbody>
 </table>
+
+@functions {
+    string ConvertStateToSymbol(sumile.Models.ShiftState? state)
+    {
+        return state switch
+        {
+            sumile.Models.ShiftState.Accepted => "〇",
+            sumile.Models.ShiftState.WantToGiveAway => "△",
+            sumile.Models.ShiftState.NotAccepted => "",
+            _ => "×"
+        };
+    }
+}

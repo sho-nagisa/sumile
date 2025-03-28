@@ -1,6 +1,7 @@
 ﻿@{
     ViewData["Title"] = "シフト提出";
     var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
+    var existingSubs = ViewBag.ExistingSubmissions as List<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -19,10 +20,26 @@
         <tbody>
             @foreach (var date in dates)
             {
+                var morning = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == "Morning");
+                var night = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == "Night");
+
+                var morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
+                var nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
+
+                bool morningSelected = (morningSymbol == "〇" || morningSymbol == "△");
+                bool nightSelected = (nightSymbol == "〇" || nightSymbol == "△");
                 <tr>
-                    <td>@date.ToString("yyyy-MM-dd")</td>
-                    <td class="shift-cell" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Morning">×</td>
-                    <td class="shift-cell" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Night">×</td>
+                    <td>@date.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                    <td class="shift-cell @(morningSelected ? "selected" : "")"
+                        data-date="@date.ToString("yyyy-MM-dd")"
+                        data-shift="Morning">
+                        @morningSymbol
+                    </td>
+                    <td class="shift-cell @(nightSelected ? "selected" : "")"
+                        data-date="@date.ToString("yyyy-MM-dd")"
+                        data-shift="Night">
+                        @nightSymbol
+                    </td>
                 </tr>
             }
         </tbody>
@@ -40,13 +57,25 @@
 
             shiftCells.forEach(cell => {
                 cell.addEventListener("click", function () {
-                    if (this.textContent === "×") {
-                        this.textContent = "〇";
+                    let currentSymbol = this.textContent.trim();
+                    let nextSymbol;
+
+                    if (currentSymbol === "×") {
+                        nextSymbol = "〇";
+                    } else if (currentSymbol === "〇") {
+                        nextSymbol = "△";
+                    } else {
+                        nextSymbol = "×";
+                    }
+
+                    this.textContent = nextSymbol;
+
+                    if (nextSymbol === "〇" || nextSymbol === "△") {
                         this.classList.add("selected");
                     } else {
-                        this.textContent = "×";
                         this.classList.remove("selected");
                     }
+
                     updateSelectedShifts();
                 });
             });
@@ -56,11 +85,25 @@
                 document.querySelectorAll(".shift-cell.selected").forEach(cell => {
                     selectedShifts.push({
                         date: cell.dataset.date,
-                        shiftType: cell.dataset.shift
+                        shiftType: cell.dataset.shift,
+                        shiftSymbol: cell.textContent.trim()
                     });
                 });
                 selectedShiftsInput.value = JSON.stringify(selectedShifts);
             }
         });
     </script>
+}
+
+@functions {
+    string ConvertStateToSymbol(sumile.Models.ShiftState? state)
+    {
+        return state switch
+        {
+            sumile.Models.ShiftState.Accepted => "〇",
+            sumile.Models.ShiftState.WantToGiveAway => "△",
+            sumile.Models.ShiftState.NotAccepted => "",
+            _ => "×"
+        };
+    }
 }

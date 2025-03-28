@@ -1,16 +1,15 @@
-﻿@{
+﻿@using System.Globalization
+
+@{
     ViewData["Title"] = "シフト一覧(管理者用)";
 
-    // AdminController の Index(int? periodId) などで渡している想定
     var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
-
-    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();  // { Id, CustomId, Name }
+    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
     var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
-    var submissions = ViewBag.Submissions as IEnumerable<dynamic> ?? new List<dynamic>();
+    var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
 }
 
-<!-- 成功メッセージがあれば表示 -->
 @if (TempData["SuccessMessage"] != null)
 {
     <div class="alert alert-success">
@@ -20,66 +19,67 @@
 
 <h2>@ViewData["Title"]</h2>
 
-<!-- ★ ページ上部: ページ遷移ボタンとプルダウン(期間選択) -->
 <div style="margin-bottom: 1rem;">
-    <!-- 募集期間設定ページへ -->
-    <a href="@Url.Action("SetRecruitmentPeriod", "Admin")" class="btn btn-primary">
-        募集期間設定
-    </a>
-
-    <!-- シフト編集ページへ -->
-    <a href="@Url.Action("EditShifts", "Admin")" class="btn btn-secondary">
-        シフト編集
-    </a>
+    <a href="@Url.Action("SetRecruitmentPeriod", "Admin")" class="btn btn-primary">募集期間設定</a>
+    <a href="@Url.Action("EditShifts", "Admin")" class="btn btn-secondary">シフト編集</a>
+    <a asp-action="ShiftLogs" asp-controller="Admin" class="btn btn-info">編集履歴を見る</a>
+    <a asp-action="ManageSubmissionPeriods" asp-controller="Admin" class="btn btn-outline-info">募集期間一覧</a>
 
 </div>
 
-<!-- ★ プルダウンで募集期間(periodId)を切り替える -->
 <div style="margin-bottom: 1rem;">
     <label for="periodSelect">表示期間：</label>
-    <select id="periodSelect">
+    <select id="periodSelect" class="form-select" style="width:auto; display:inline;">
         @if (recruitmentPeriods != null)
         {
             foreach (var rp in recruitmentPeriods)
             {
-                bool isSelected = (rp.Id == selectedPeriodId);
-
-                // Razorのタグヘルパー制約回避のため if/else でselectedを出し分け
-                if (isSelected)
-                {
-                    <option value="@rp.Id" selected>
-                        @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
-                    </option>
-                }
-                else
-                {
-                    <option value="@rp.Id">
-                        @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
-                    </option>
-                }
+                <option value="@rp.Id" selected="@(rp.Id == selectedPeriodId)">
+                    @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
+                </option>
             }
         }
     </select>
+
+    @* 募集状態を切り替えるボタン（選択中の period に対して） *@
+    @if (recruitmentPeriods != null && selectedPeriodId != null)
+    {
+        var selectedPeriod = recruitmentPeriods.FirstOrDefault(p => p.Id == selectedPeriodId);
+        if (selectedPeriod != null)
+        {
+            <form asp-action="ToggleSubmissionStatus" asp-controller="Admin" method="post" style="display:inline;">
+                <input type="hidden" name="id" value="@selectedPeriod.Id" />
+                <button type="submit" class="btn btn-outline-warning ms-2">
+                    @(selectedPeriod.IsOpen ? "締切にする" : "募集中に戻す")
+                </button>
+            </form>
+        }
+    }
 </div>
 
 <script>
     document.getElementById('periodSelect')?.addEventListener('change', function () {
         var pid = this.value;
-        // 同じIndexアクションへ ?periodId=◯◯ を付与して再読み込み
         window.location.href = '@Url.Action("Index", "Admin")?periodId=' + pid;
     });
 </script>
 
-<!-- ★ ここからテーブル (2行ヘッダで "上" "敷" を表示) -->
 <table class="table table-bordered text-center">
     <thead>
         <tr>
-            <th rowspan="2">ユーザー</th>
+            <th rowspan="3">ユーザー</th>
             @foreach (var date in dates)
             {
                 <th colspan="2">@date.ToString("M/d")</th>
             }
         </tr>
+        <tr>
+    @foreach (var date in dates)
+    {
+        <th colspan="2">@date.ToString("ddd", new CultureInfo("ja-JP"))</th>
+    }
+</tr>
+
         <tr>
             @foreach (var date in dates)
             {
@@ -92,28 +92,32 @@
         @foreach (var user in users)
         {
             <tr>
-                <!-- 左端のユーザー -->
                 <td>@user.CustomId (@user.Name)</td>
-
                 @foreach (var date in dates)
                 {
-                    // 朝(上)の提出情報を取得 ("Morning" かどうか)
-                    var morningShift = submissions.FirstOrDefault(s =>
-                    s.UserId == user.Id &&
-                    ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") &&
-                    s.ShiftType == "Morning"
-                    );
-                    // 夜(敷)の提出情報を取得 ("Night" かどうか)
-                    var nightShift = submissions.FirstOrDefault(s =>
-                    s.UserId == user.Id &&
-                    ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") &&
-                    s.ShiftType == "Night"
-                    );
+                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Morning");
+                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Night");
 
-                    <td>@(morningShift != null ? "〇" : "×")</td>
-                    <td>@(nightShift != null ? "〇" : "×")</td>
+                    string morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
+                    string nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
+
+                    <td>@morningSymbol</td>
+                    <td>@nightSymbol</td>
                 }
             </tr>
         }
     </tbody>
 </table>
+
+@functions {
+    string ConvertStateToSymbol(sumile.Models.ShiftState? state)
+    {
+        return state switch
+        {
+            sumile.Models.ShiftState.Accepted => "〇",
+            sumile.Models.ShiftState.WantToGiveAway => "△",
+            sumile.Models.ShiftState.NotAccepted => "",
+            _ => "×"
+        };
+    }
+}

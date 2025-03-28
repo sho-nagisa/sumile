@@ -14,5 +14,7 @@ namespace sumile.Models
         [DataType(DataType.Date)]
         [Display(Name = "募集終了日")]
         public DateTime EndDate { get; set; }
+
+        public bool IsOpen { get; set; } = true;
     }
 }

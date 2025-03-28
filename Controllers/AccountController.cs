@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity;
 using sumile.Models;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http; // セッション用
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -26,69 +27,59 @@ namespace sumile.Controllers
         [HttpGet]
         public IActionResult Register()
         {
-
-            // 空の RegisterViewModel インスタンスを渡す
             return View(new RegisterViewModel());
         }
 
         [HttpPost]
         public async Task<IActionResult> Register(RegisterViewModel model)
         {
-            Debug.WriteLine("Register メソッドが呼ばれました"); // ここに到達するか確認
+            Debug.WriteLine("Register メソッドが呼ばれました");
+
             if (!ModelState.IsValid)
             {
                 Debug.WriteLine("ModelState が無効");
                 return View(model);
             }
 
-            Debug.WriteLine("ModelState は有効");
-            // CustomId を自動採番（現在の最小空き番号を検索）
+            // CustomId 自動採番
             int newCustomId = 1;
             var existingIds = _userManager.Users
-                                .Select(u => u.CustomId)
-                                .OrderBy(id => id)
-                                .ToList();
-            Debug.WriteLine($"既存のカスタムID: {string.Join(", ", existingIds)}");
+                .Select(u => u.CustomId)
+                .OrderBy(id => id)
+                .ToList();
+
             foreach (var id in existingIds)
             {
-                if (id == newCustomId)
-                    newCustomId++;
-                else
-                    break;
+                if (id == newCustomId) newCustomId++;
+                else break;
             }
-            Debug.WriteLine($"新規 CustomId: {newCustomId}");
+
             var user = new ApplicationUser
             {
-                UserName = newCustomId.ToString(), // カスタムIDを文字列として UserName に設定
+                UserName = newCustomId.ToString(),
                 CustomId = newCustomId,
-                Name = model.Name  // 登録された名前を設定
+                Name = model.Name,
+                UserType = "Normal" // 登録時は基本的に Normal 扱いにしておく
             };
+
             var result = await _userManager.CreateAsync(user, model.Password);
-            Debug.WriteLine($"ユーザーオブジェクト作成: UserName={user.UserName}, CustomId={user.CustomId}, Name={user.Name}");
+
             if (!result.Succeeded)
             {
-                Debug.WriteLine("ユーザー作成失敗！エラー内容:");
                 foreach (var error in result.Errors)
                 {
                     Debug.WriteLine($"エラー: {error.Code} - {error.Description}");
+                    ModelState.AddModelError(string.Empty, error.Description);
                 }
                 return View(model);
             }
-            if (result.Succeeded)
-            {
-                Debug.WriteLine("ユーザー作成失敗！エラー内容:");
-                await _signInManager.SignInAsync(user, isPersistent: false);
-                TempData["SuccessMessage"] = "登録が成功しました";
-                return RedirectToAction("Index", "Shift");
-            }
-            Debug.WriteLine("登録成功 - Shift/Index にリダイレクト");
 
-            foreach (var error in result.Errors)
-            {
-                ModelState.AddModelError(string.Empty, error.Description);
-            }
+            // 自動ログイン＋セッション保存
+            await _signInManager.SignInAsync(user, isPersistent: false);
+            HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
+
             TempData["SuccessMessage"] = "登録が成功しました";
-            return View(model);
+            return RedirectToAction("Index", "Shift");
         }
 
         // ========== ログイン ==========
@@ -107,8 +98,10 @@ namespace sumile.Controllers
             if (!ModelState.IsValid)
                 return View(model);
 
-            // CustomId から User を取得
-            var user = await _userManager.Users.FirstOrDefaultAsync(u => u.CustomId == model.CustomId);
+            // CustomId で検索
+            var user = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.CustomId == model.CustomId);
+
             if (user == null)
             {
                 ModelState.AddModelError(string.Empty, "ログインに失敗しました。");
@@ -120,6 +113,9 @@ namespace sumile.Controllers
 
             if (result.Succeeded)
             {
+                // ★ セッションに UserType を保存
+                HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
+
                 return RedirectToAction("Index", "Shift");
             }
 
@@ -133,6 +129,7 @@ namespace sumile.Controllers
         public async Task<IActionResult> Logout()
         {
             await _signInManager.SignOutAsync();
+            HttpContext.Session.Clear(); // ★ セッションもクリアしておく
             return RedirectToAction("Index", "Home");
         }
     }

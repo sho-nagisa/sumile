@@ -1,0 +1,48 @@
+﻿@model List<sumile.Models.ShiftEditLog>
+
+@{
+    ViewData["Title"] = "シフト編集履歴";
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<table class="table table-bordered table-striped text-center">
+    <thead>
+        <tr>
+            <th>編集者</th>
+            <th>対象者</th>
+            <th>編集日時</th>
+            <th>シフト日</th>
+            <th>シフト種別</th>
+            <th>変更前</th>
+            <th>変更後</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var log in Model)
+        {
+            <tr>
+                <td>@log.AdminUser?.Name (@log.AdminUserId)</td>
+                <td>@log.TargetUser?.Name (@log.TargetUserId)</td>
+                <td>@log.EditDate.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                <td>@log.ShiftDate.ToString("yyyy-MM-dd")</td>
+                <td>@log.ShiftType</td>
+                <td>@ConvertToSymbol(log.OldState)</td>
+                <td>@ConvertToSymbol(log.NewState)</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@functions {
+    string ConvertToSymbol(sumile.Models.ShiftState state)
+    {
+        return state switch
+        {
+            sumile.Models.ShiftState.Accepted => "〇",
+            sumile.Models.ShiftState.WantToGiveAway => "△",
+            sumile.Models.ShiftState.NotAccepted => "",
+            _ => "×"
+        };
+    }
+}

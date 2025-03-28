@@ -2,21 +2,41 @@
     ViewData["Title"] = "シフト編集";
     var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
     var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
-    var submissions = ViewBag.Submissions as IEnumerable<dynamic> ?? new List<dynamic>();
+    var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
 }
 
 <h2>@ViewData["Title"]</h2>
 
-<form asp-action="UpdateShifts" method="post" id="updateForm">
-    @Html.AntiForgeryToken() <!-- これでアンチフォージェリートークンが自動生成されます -->
+<form method="get" asp-action="EditShifts">
+    <select name="periodId" onchange="this.form.submit()">
+        @foreach (var rec in ViewBag.RecruitmentPeriods as IEnumerable<sumile.Models.RecruitmentPeriod>)
+        {
+            <option value="@rec.Id" selected="@(rec.Id == ViewBag.SelectedPeriodId ? "selected" : null)">
+                @rec.StartDate.ToString("yyyy-MM-dd") - @rec.EndDate.ToString("yyyy-MM-dd")
+            </option>
+        }
+    </select>
+    <input type="submit" value="切り替え" class="btn btn-secondary" />
+</form>
+
+<hr />
+
+<form method="post" id="updateForm">
+    @Html.AntiForgeryToken()
 
     <table class="table table-bordered text-center">
         <thead>
             <tr>
-                <th rowspan="2">ユーザー</th>
+                <th rowspan="3">ユーザー</th>
                 @foreach (var date in dates)
                 {
                     <th colspan="2">@date.ToString("M月d日")</th>
+                }
+            </tr>
+            <tr>
+                @foreach (var date in dates)
+                {
+                    <th colspan="2">(@date.ToString("ddd"))</th>
                 }
             </tr>
             <tr>
@@ -34,15 +54,14 @@
                     <td>@user.CustomId (@user.Name)</td>
                     @foreach (var date in dates)
                     {
-                        var morningShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Morning");
-                        var nightShift = submissions.FirstOrDefault(s => s.UserId == user.Id && ((DateTime)s.Date).ToString("yyyy-MM-dd") == date.ToString("yyyy-MM-dd") && s.ShiftType == "Night");
+                        var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Morning");
+                        var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Night");
 
-                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Morning">
-                            @(morningShift != null ? "〇" : "×")
-                        </td>
-                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Night">
-                            @(nightShift != null ? "〇" : "×")
-                        </td>
+                        string morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
+                        string nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
+
+                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Morning">@morningSymbol</td>
+                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Night">@nightSymbol</td>
                     }
                 </tr>
             }
@@ -58,17 +77,21 @@
         document.addEventListener("DOMContentLoaded", function () {
             const cells = document.querySelectorAll(".editable-cell");
             let updates = [];
+            const symbols = ["×", "〇", "△", ""];
 
             cells.forEach(cell => {
                 cell.addEventListener("click", function () {
-                    let newValue = this.textContent.trim() === "〇" ? "×" : "〇";
-                    this.textContent = newValue;
+                    let currentSymbol = this.textContent.trim();
+                    let idx = symbols.indexOf(currentSymbol);
+                    if (idx < 0) idx = 0;
+                    let nextSymbol = symbols[(idx + 1) % symbols.length];
+                    this.textContent = nextSymbol;
 
                     let shiftData = {
                         userId: this.dataset.user,
                         date: this.dataset.date,
                         shiftType: this.dataset.shift,
-                        isSelected: (newValue === "〇")
+                        shiftStatus: nextSymbol
                     };
 
                     let existingIndex = updates.findIndex(u =>
@@ -85,28 +108,48 @@
             });
 
             document.getElementById("saveChanges").addEventListener("click", function () {
-                fetch("/Admin/UpdateShifts", {
-                    method: "POST",
+                fetch('/Admin/UpdateShifts', {
+                    method: 'POST',
                     headers: {
-                        "Content-Type": "application/json",
-                        "RequestVerificationToken": document.querySelector('input[name="__RequestVerificationToken"]').value
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
                     },
                     body: JSON.stringify(updates)
                 })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert("シフトを更新しました");
-                        location.reload();
-                    } else {
-                        alert("更新に失敗しました");
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    alert("エラーが発生しました");
-                });
+                    .then(response => response.text())
+                    .then(text => {
+                        try {
+                            const data = JSON.parse(text);
+                            if (data.success) {
+                                alert("シフトを更新しました");
+                                location.reload();
+                            } else {
+                                alert("更新に失敗しました: " + data.error);
+                            }
+                        } catch (e) {
+                            console.error("サーバーから返されたHTMLやエラーページ:", text);
+                            alert("サーバーから予期しない応答が返されました（詳細はコンソール）");
+                        }
+                    })
+                    .catch(err => {
+                        console.error("通信エラー:", err);
+                        alert("通信エラーが発生しました");
+                    });
             });
         });
     </script>
+}
+
+
+@functions {
+    string ConvertStateToSymbol(sumile.Models.ShiftState? state)
+    {
+        return state switch
+        {
+            sumile.Models.ShiftState.Accepted => "〇",
+            sumile.Models.ShiftState.WantToGiveAway => "△",
+            sumile.Models.ShiftState.NotAccepted => "",
+            _ => "×"
+        };
+    }
 }

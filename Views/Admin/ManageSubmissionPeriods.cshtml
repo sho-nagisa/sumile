@@ -1,0 +1,48 @@
+﻿@model IEnumerable<sumile.Models.RecruitmentPeriod>
+@{
+    ViewData["Title"] = "募集期間一覧（状態切り替え）";
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<table class="table table-bordered text-center">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>開始日</th>
+            <th>終了日</th>
+            <th>状態</th>
+            <th>操作</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var period in Model)
+        {
+            <tr>
+                <td>@period.Id</td>
+                <td>@period.StartDate.ToString("yyyy/MM/dd")</td>
+                <td>@period.EndDate.ToString("yyyy/MM/dd")</td>
+                <td>
+                    @if (period.IsOpen)
+                    {
+                        <span class="text-success">募集中</span>
+                    }
+                    else
+                    {
+                        <span class="text-danger">締切</span>
+                    }
+                </td>
+                <td>
+                    <form asp-action="ToggleSubmissionStatus" method="post" style="display:inline;">
+                        <input type="hidden" name="id" value="@period.Id" />
+                        <button type="submit" class="btn btn-sm btn-warning">
+                            @(period.IsOpen ? "締切にする" : "募集中に戻す")
+                        </button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<a asp-action="Index" class="btn btn-secondary">戻る</a>

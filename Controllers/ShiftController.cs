@@ -24,158 +24,124 @@ namespace sumile.Controllers
             _userManager = userManager;
         }
 
-        /// <summary>
-        /// 日付リストを生成する共通メソッド
-        /// periodId が null なら「最新の募集期間」、指定ありなら該当Idの募集期間を探して日付リストを作成。
-        /// 1件もなければデフォルト10日分。
-        /// </summary>
         private async Task<List<DateTime>> GenerateDateListForRecruitment(int? periodId)
         {
-            // 1. すべての募集期間を取得（新しい順）
-            var allPeriods = await _context.RecruitmentPeriods
-                .OrderByDescending(r => r.Id)
-                .ToListAsync();
+            if (!periodId.HasValue) return new List<DateTime>();
 
-            // 2. 指定された periodId のレコードを探す
-            RecruitmentPeriod selectedPeriod = null;
-            if (periodId.HasValue)
-            {
-                selectedPeriod = allPeriods.FirstOrDefault(r => r.Id == periodId.Value);
-            }
-            // 3. 見つからなければ最新(先頭)
-            if (selectedPeriod == null)
-            {
-                selectedPeriod = allPeriods.FirstOrDefault();
-            }
+            var period = await _context.RecruitmentPeriods.FindAsync(periodId.Value);
+            if (period == null) return new List<DateTime>();
 
-            // 4. 日付の計算
-            if (selectedPeriod == null)
+            // ★ UTCであることを明示的に指定（これが大事！）
+            var start = DateTime.SpecifyKind(period.StartDate.Date, DateTimeKind.Utc);
+            var end = DateTime.SpecifyKind(period.EndDate.Date, DateTimeKind.Utc);
+
+            return Enumerable.Range(0, (end - start).Days + 1)
+                .Select(i => start.AddDays(i))
+                .ToList();
+        }
+
+
+        [HttpGet]
+        public async Task<IActionResult> Index(int? periodId)
+        {
+            var allPeriods = await _context.RecruitmentPeriods.OrderByDescending(r => r.Id).ToListAsync();
+            var selectedPeriod = periodId.HasValue ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value) : allPeriods.FirstOrDefault();
+
+            int days;
+            DateTime startDate;
+            if (selectedPeriod != null)
             {
-                // 募集期間テーブルが空 → デフォルト10日
-                return Enumerable.Range(0, 10)
-                    .Select(i => DateTime.Today.AddDays(i))
-                    .ToList();
-            }
-            else
-            {
-                var startDate = selectedPeriod.StartDate.Date;
+                startDate = selectedPeriod.StartDate.Date;
                 var endDate = selectedPeriod.EndDate.Date;
-
-                int days = (endDate - startDate).Days + 1;
+                days = (endDate - startDate).Days + 1;
                 if (days < 1)
                 {
                     days = 10;
                     startDate = DateTime.Today;
                 }
-                return Enumerable.Range(0, days)
-                    .Select(i => startDate.AddDays(i))
-                    .ToList();
             }
-        }
-
-        /// <summary>
-        /// シフト一覧表示
-        /// int? periodId を受け取り、該当の募集期間の日付リストを表示
-        /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> Index(int? periodId)
-        {
-            // ログインユーザー取得
-            var currentUser = await _userManager.GetUserAsync(User);
-            if (currentUser == null)
+            else
             {
-                return RedirectToAction("Login", "Account");
+                days = 10;
+                startDate = DateTime.Today;
             }
 
-            // CustomId が int 型なので、そのまま変換
-            int customId = currentUser.CustomId;
-            string customIdString = (customId < 0) ? "No user" : customId.ToString();
-            // 名前がnull/空なら "No user"
-            string userNameString = string.IsNullOrEmpty(currentUser.Name)
-                ? "No user"
-                : currentUser.Name;
+            var dates = Enumerable.Range(0, days).Select(i => startDate.AddDays(i)).ToList();
+            var users = await _userManager.Users.Select(u => new { u.Id, u.CustomId, u.Name }).ToListAsync();
+            var submissions = await _context.ShiftSubmissions.Include(s => s.User).ToListAsync();
 
-            // 募集期間から日付リストを生成
-            var dates = await GenerateDateListForRecruitment(periodId);
-
-            // ユーザー情報を取得
-            var users = await _userManager.Users
-                .Select(u => new ShiftIndexViewModel.UserInfo
-                {
-                    Id = u.Id,
-                    CustomId = u.CustomId,
-                    Name = u.Name
-                })
-                .ToListAsync();
-
-            // シフト提出情報を取得
-            var submissions = await _context.ShiftSubmissions
-                .Include(s => s.User)
-                .Select(s => new ShiftIndexViewModel.SubmissionInfo
-                {
-                    UserId = s.UserId,
-                    Date = s.Date,
-                    ShiftType = s.ShiftType
-                })
-                .ToListAsync();
-
-            // 募集期間リスト（プルダウン用）を取得
-            var allRecs = await _context.RecruitmentPeriods
-                .OrderByDescending(r => r.Id)
-                .ToListAsync();
-
-            // ViewModelを作成して返す
-            var model = new ShiftIndexViewModel
-            {
-                CurrentUserCustomId = customIdString,
-                CurrentUserName = userNameString,
-                Users = users,
-                Dates = dates,
-                Submissions = submissions,
-                RecruitmentPeriods = allRecs,
-                SelectedPeriodId = periodId
-            };
-
-            return View(model);
-        }
-
-        /// <summary>
-        /// シフト提出フォーム
-        /// Submission() でも同じ日付生成を共通メソッドにまとめる
-        /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> Submission(int? periodId)
-        {
-            // ログインユーザーをチェック
-            var currentUser = await _userManager.GetUserAsync(User);
-            if (currentUser == null)
-            {
-                return RedirectToAction("Login", "Account");
-            }
-
-            int customId = currentUser.CustomId;
-            string customIdString = (customId <= 0) ? "No user" : customId.ToString();
-            string userNameString = string.IsNullOrEmpty(currentUser.Name)
-                ? "No user"
-                : currentUser.Name;
-
-            ViewBag.CurrentUserCustomId = customIdString;
-            ViewBag.CurrentUserName = userNameString;
-
-            // 募集期間から日付リストを取得
-            var dates = await GenerateDateListForRecruitment(periodId);
-
+            ViewBag.Users = users;
             ViewBag.Dates = dates;
+            ViewBag.Submissions = submissions;
+            ViewBag.RecruitmentPeriods = allPeriods;
+            ViewBag.SelectedPeriodId = selectedPeriod?.Id;
+
             return View();
         }
 
-        /// <summary>
-        /// シフト提出フォーム（×→○のUIなど）で選択したシフトをJSONで受け取る
-        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> Submission(int? periodId)
+        {
+            // 1. ログインユーザー取得
+            var currentUser = await _userManager.GetUserAsync(User);
+            if (currentUser == null)
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
+            // 2. 募集中の期間一覧取得
+            var openPeriods = await _context.RecruitmentPeriods
+                .Where(p => p.IsOpen)
+                .OrderByDescending(p => p.StartDate)
+                .ToListAsync();
+            ViewBag.Periods = openPeriods;
+
+            // 3. periodId が指定されていなければ最初の募集中期間を使う
+            if (!periodId.HasValue && openPeriods.Any())
+            {
+                periodId = openPeriods.First().Id;
+            }
+
+            ViewBag.SelectedPeriodId = periodId;
+
+            // 4. 表示する日付リスト生成（UTCのまま）
+            var dates = await GenerateDateListForRecruitment(periodId);
+            ViewBag.Dates = dates;
+
+            // 5. 提出済みデータの取得（UTCベース）
+            var userId = currentUser.Id;
+            List<ShiftSubmission> existingSubmissions = new();
+
+            if (dates.Any())
+            {
+                var start = dates.First();
+                var end = dates.Last();
+
+                existingSubmissions = await _context.ShiftSubmissions
+                    .Where(s =>
+                        s.UserId == userId &&
+                        s.Date >= start &&
+                        s.Date <= end)
+                    .ToListAsync();
+            }
+
+            ViewBag.ExistingSubmissions = existingSubmissions;
+
+            // 6. ユーザー情報をViewBagで渡す（任意）
+            ViewBag.CurrentUserCustomId = currentUser.CustomId > 0 ? currentUser.CustomId.ToString() : "No user";
+            ViewBag.CurrentUserName = string.IsNullOrEmpty(currentUser.Name) ? "No user" : currentUser.Name;
+
+            return View();
+        }
+
         [HttpPost]
         public async Task<IActionResult> SubmitShifts([FromForm] string selectedShifts)
         {
             var userId = _userManager.GetUserId(User);
+
+            // ★ セッションから UserType を取得（例：Normal / AdminUpdated など）
+            var userType = HttpContext.Session.GetString("UserType") ?? "Normal";
+
             if (string.IsNullOrEmpty(selectedShifts))
             {
                 TempData["ErrorMessage"] = "シフトを選択してください。";
@@ -190,10 +156,21 @@ namespace sumile.Controllers
             }
 
             var submissions = new List<ShiftSubmission>();
+
             foreach (var shift in shiftList)
             {
-                // DateTime を UTC に変換
-                var parsedDate = DateTime.Parse(shift.Date);
+                var status = shift.ShiftSymbol switch
+                {
+                    "〇" => ShiftState.Accepted,
+                    "△" => ShiftState.WantToGiveAway,
+                    _ => ShiftState.NotAccepted
+                };
+
+                if (!DateTime.TryParse(shift.Date, out var parsedDate))
+                {
+                    continue;
+                }
+
                 var dateUtc = DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
 
                 submissions.Add(new ShiftSubmission
@@ -201,51 +178,55 @@ namespace sumile.Controllers
                     UserId = userId,
                     Date = dateUtc,
                     ShiftType = shift.ShiftType,
+                    ShiftStatus = status,
                     IsSelected = true,
-                    SubmittedAt = DateTime.UtcNow
+                    SubmittedAt = DateTime.UtcNow,
+                    UserType = userType // ★ ここを忘れずに追加
                 });
             }
 
             if (submissions.Any())
             {
+                var dates = submissions.Select(s => s.Date.Date).Distinct().ToList();
+                var existing = await _context.ShiftSubmissions
+                    .Where(s => s.UserId == userId && dates.Contains(s.Date.Date))
+                    .ToListAsync();
+
+                _context.ShiftSubmissions.RemoveRange(existing);
                 _context.ShiftSubmissions.AddRange(submissions);
+
                 await _context.SaveChangesAsync();
+
                 TempData["SuccessMessage"] = "シフトが提出されました。";
             }
             else
             {
-                TempData["ErrorMessage"] = "シフトを選択してください。";
+                TempData["ErrorMessage"] = "有効なシフトが選択されていません。";
             }
 
-            return RedirectToAction(nameof(Index));
+            return RedirectToAction(nameof(Submission));
         }
 
-        /// <summary>
-        /// シフト提出一覧（ログインユーザー分）
-        /// </summary>
+
+
         [HttpGet]
         public async Task<IActionResult> SubmissioList(int? periodId)
         {
-            // 1. ログインユーザーを取得
             var currentUser = await _userManager.GetUserAsync(User);
             if (currentUser == null)
             {
                 return RedirectToAction("Login", "Account");
             }
 
-            // 2. 募集期間一覧（プルダウン用）と「選択中の期間ID」を ViewBag に
             var recruitmentPeriods = await _context.RecruitmentPeriods
                 .OrderByDescending(r => r.Id)
                 .ToListAsync();
             ViewBag.RecruitmentPeriods = recruitmentPeriods;
             ViewBag.SelectedPeriodId = periodId;
 
-            // 3. 日付リストを生成（該当 periodId が無ければ最新期間 or デフォルト10日）
             var dates = await GenerateDateListForRecruitment(periodId);
             ViewBag.Dates = dates;
 
-            // 4. この画面は「ログイン中ユーザー1人分」だけ表示するので、Users には1件だけ入れる
-            //    （ビュー側が「foreach(var user in users)」で回す想定のため、あえて1件のリストに）
             var users = new List<dynamic>()
             {
                 new {
@@ -256,8 +237,6 @@ namespace sumile.Controllers
             };
             ViewBag.Users = users;
 
-            // 5. シフト提出情報を期間内で絞って取得
-            //    dates が空でなければ [最初の日付, 最後の日付] で Where する
             var submissions = new List<ShiftSubmission>();
             if (dates.Any())
             {
@@ -265,43 +244,33 @@ namespace sumile.Controllers
                 var periodEnd = dates.Last();
 
                 submissions = await _context.ShiftSubmissions
-                    .Where(s => s.UserId == currentUser.Id
-                             && s.Date >= periodStart
-                             && s.Date <= periodEnd)
+                    .Where(s => s.UserId == currentUser.Id &&
+                                s.Date >= periodStart && s.Date <= periodEnd)
                     .ToListAsync();
             }
-
-            // 6. ビュー側で使うため ViewBag.Submissions に詰める
             ViewBag.Submissions = submissions;
 
-            // 7. ビューを返す (今回のビューは「管理者用」風のデザイン例を流用)
             return View();
         }
-        /// <summary>
-        /// 特定募集期間内の提出シフト一覧
-        /// </summary>
+
         [HttpGet]
         public async Task<IActionResult> SubmittedList(int? periodId)
         {
-            // ログインユーザーを取得
             var currentUser = await _userManager.GetUserAsync(User);
             if (currentUser == null)
             {
                 return RedirectToAction("Login", "Account");
             }
 
-            // 募集期間一覧を取得（最新順）
             var recruitmentPeriods = await _context.RecruitmentPeriods
                 .OrderByDescending(r => r.Id)
                 .ToListAsync();
             ViewBag.RecruitmentPeriods = recruitmentPeriods;
             ViewBag.SelectedPeriodId = periodId;
 
-            // 指定された募集期間で日付リストを生成（未指定なら最新募集期間、またはデフォルト10日分）
             var dates = await GenerateDateListForRecruitment(periodId);
             ViewBag.Dates = dates;
 
-            // 募集期間の日付範囲でシフト提出情報を絞り込む
             if (dates.Any())
             {
                 DateTime periodStart = dates.First();
@@ -318,14 +287,45 @@ namespace sumile.Controllers
             }
             else
             {
-                // 日付リストが空の場合は空のリストを返す
                 return View(new List<ShiftSubmission>());
             }
         }
+        private async Task<List<DateTime>> GenerateDateListForSubmissionPeriod(int? periodId)
+        {
+            var openPeriods = await _context.RecruitmentPeriods
+                .Where(p => p.IsOpen)
+                .OrderByDescending(p => p.StartDate)
+                .ToListAsync();
 
-        /// <summary>
-        /// 新規シフト作成アクション
-        /// </summary>
+            RecruitmentPeriod selectedPeriod = null;
+            if (periodId.HasValue)
+            {
+                selectedPeriod = openPeriods.FirstOrDefault(p => p.Id == periodId);
+            }
+
+            if (selectedPeriod == null)
+            {
+                selectedPeriod = openPeriods.FirstOrDefault();
+            }
+
+            if (selectedPeriod == null)
+            {
+                return Enumerable.Range(0, 10).Select(i => DateTime.Today.AddDays(i)).ToList();
+            }
+
+            var startDate = selectedPeriod.StartDate;
+            var endDate = selectedPeriod.EndDate;
+            var days = (endDate - startDate).Days + 1;
+
+            if (days < 1)
+            {
+                days = 10;
+                startDate = DateTime.Today;
+            }
+
+            return Enumerable.Range(0, days).Select(i => startDate.AddDays(i)).ToList();
+        }
+
         [HttpGet]
         public IActionResult Create()
         {
@@ -333,12 +333,10 @@ namespace sumile.Controllers
         }
     }
 
-    /// <summary>
-    /// JSONデータを受け取る用のViewModel
-    /// </summary>
     public class ShiftSubmissionViewModel
     {
         public string Date { get; set; }
         public string ShiftType { get; set; }
+        public string ShiftSymbol { get; set; }
     }
 }

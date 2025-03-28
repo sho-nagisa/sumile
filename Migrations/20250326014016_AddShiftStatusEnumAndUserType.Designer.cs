@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using sumile.Data;
@@ -11,9 +12,11 @@ using sumile.Data;
 namespace sumile.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250326014016_AddShiftStatusEnumAndUserType")]
+    partial class AddShiftStatusEnumAndUserType
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -240,9 +243,6 @@ namespace sumile.Migrations
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("IsOpen")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -302,51 +302,6 @@ namespace sumile.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("ShiftAssignments");
-                });
-
-            modelBuilder.Entity("sumile.Models.ShiftEditLog", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AdminUserId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("EditDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("NewState")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Note")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("OldState")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("ShiftDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ShiftType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("TargetUserId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AdminUserId");
-
-                    b.HasIndex("TargetUserId");
-
-                    b.ToTable("ShiftEditLogs");
                 });
 
             modelBuilder.Entity("sumile.Models.ShiftExchange", b =>
@@ -428,6 +383,25 @@ namespace sumile.Migrations
                     b.ToTable("ShiftSubmissions");
                 });
 
+            modelBuilder.Entity("sumile.Models.SubmissionPeriod", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SubmissionPeriods");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -496,25 +470,6 @@ namespace sumile.Migrations
                     b.Navigation("Shift");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("sumile.Models.ShiftEditLog", b =>
-                {
-                    b.HasOne("sumile.Models.ApplicationUser", "AdminUser")
-                        .WithMany()
-                        .HasForeignKey("AdminUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("sumile.Models.ApplicationUser", "TargetUser")
-                        .WithMany()
-                        .HasForeignKey("TargetUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("AdminUser");
-
-                    b.Navigation("TargetUser");
                 });
 
             modelBuilder.Entity("sumile.Models.ShiftExchange", b =>
