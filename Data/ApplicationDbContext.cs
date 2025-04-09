@@ -17,6 +17,7 @@ namespace sumile.Data
         public DbSet<ShiftExchange> ShiftExchanges { get; set; }
         public DbSet<RecruitmentPeriod> RecruitmentPeriods { get; set; }
         public DbSet<ShiftEditLog> ShiftEditLogs { get; set; }
+        public DbSet<DailyWorkload> DailyWorkloads { get; set; }
 
     }
 }

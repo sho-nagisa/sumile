@@ -31,7 +31,6 @@ namespace sumile.Controllers
             var period = await _context.RecruitmentPeriods.FindAsync(periodId.Value);
             if (period == null) return new List<DateTime>();
 
-            // ★ UTCであることを明示的に指定（これが大事！）
             var start = DateTime.SpecifyKind(period.StartDate.Date, DateTimeKind.Utc);
             var end = DateTime.SpecifyKind(period.EndDate.Date, DateTimeKind.Utc);
 
@@ -40,20 +39,30 @@ namespace sumile.Controllers
                 .ToList();
         }
 
-
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
         {
-            var allPeriods = await _context.RecruitmentPeriods.OrderByDescending(r => r.Id).ToListAsync();
-            var selectedPeriod = periodId.HasValue ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value) : allPeriods.FirstOrDefault();
+            var allPeriods = await _context.RecruitmentPeriods
+                .OrderByDescending(r => r.Id)
+                .ToListAsync();
+
+            var selectedPeriod = periodId.HasValue
+                ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value)
+                : allPeriods.FirstOrDefault();
+            // 追加（Indexの中）
+            var workloads = await _context.DailyWorkloads
+                .Where(w => selectedPeriod != null && w.RecruitmentPeriodId == selectedPeriod.Id)
+                .ToListAsync();
 
             int days;
             DateTime startDate;
+
             if (selectedPeriod != null)
             {
                 startDate = selectedPeriod.StartDate.Date;
                 var endDate = selectedPeriod.EndDate.Date;
                 days = (endDate - startDate).Days + 1;
+
                 if (days < 1)
                 {
                     days = 10;
@@ -67,9 +76,21 @@ namespace sumile.Controllers
             }
 
             var dates = Enumerable.Range(0, days).Select(i => startDate.AddDays(i)).ToList();
-            var users = await _userManager.Users.Select(u => new { u.Id, u.CustomId, u.Name }).ToListAsync();
-            var submissions = await _context.ShiftSubmissions.Include(s => s.User).ToListAsync();
 
+            var users = await _userManager.Users
+                .Select(u => new { u.Id, u.CustomId, u.Name })
+                .ToListAsync();
+
+            var submissions = new List<ShiftSubmission>();
+            if (selectedPeriod != null)
+            {
+                submissions = await _context.ShiftSubmissions
+                    .Include(s => s.User)
+                    .Where(s => s.RecruitmentPeriodId == selectedPeriod.Id)
+                    .ToListAsync();
+            }
+
+            ViewBag.Workloads = workloads;
             ViewBag.Users = users;
             ViewBag.Dates = dates;
             ViewBag.Submissions = submissions;
@@ -82,33 +103,25 @@ namespace sumile.Controllers
         [HttpGet]
         public async Task<IActionResult> Submission(int? periodId)
         {
-            // 1. ログインユーザー取得
             var currentUser = await _userManager.GetUserAsync(User);
-            if (currentUser == null)
-            {
-                return RedirectToAction("Login", "Account");
-            }
+            if (currentUser == null) return RedirectToAction("Login", "Account");
 
-            // 2. 募集中の期間一覧取得
             var openPeriods = await _context.RecruitmentPeriods
                 .Where(p => p.IsOpen)
                 .OrderByDescending(p => p.StartDate)
                 .ToListAsync();
+
             ViewBag.Periods = openPeriods;
 
-            // 3. periodId が指定されていなければ最初の募集中期間を使う
             if (!periodId.HasValue && openPeriods.Any())
             {
                 periodId = openPeriods.First().Id;
             }
-
             ViewBag.SelectedPeriodId = periodId;
 
-            // 4. 表示する日付リスト生成（UTCのまま）
             var dates = await GenerateDateListForRecruitment(periodId);
             ViewBag.Dates = dates;
 
-            // 5. 提出済みデータの取得（UTCベース）
             var userId = currentUser.Id;
             List<ShiftSubmission> existingSubmissions = new();
 
@@ -121,13 +134,12 @@ namespace sumile.Controllers
                     .Where(s =>
                         s.UserId == userId &&
                         s.Date >= start &&
-                        s.Date <= end)
+                        s.Date <= end &&
+                        s.RecruitmentPeriodId == periodId)
                     .ToListAsync();
             }
 
             ViewBag.ExistingSubmissions = existingSubmissions;
-
-            // 6. ユーザー情報をViewBagで渡す（任意）
             ViewBag.CurrentUserCustomId = currentUser.CustomId > 0 ? currentUser.CustomId.ToString() : "No user";
             ViewBag.CurrentUserName = string.IsNullOrEmpty(currentUser.Name) ? "No user" : currentUser.Name;
 
@@ -135,24 +147,29 @@ namespace sumile.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> SubmitShifts([FromForm] string selectedShifts)
+        public async Task<IActionResult> SubmitShifts([FromForm] string selectedShifts, [FromForm] int periodId)
         {
-            var userId = _userManager.GetUserId(User);
+            var currentUser = await _userManager.GetUserAsync(User);
+            if (currentUser == null) return RedirectToAction("Login", "Account");
 
-            // ★ セッションから UserType を取得（例：Normal / AdminUpdated など）
-            var userType = HttpContext.Session.GetString("UserType") ?? "Normal";
+            var userId = currentUser.Id;
+            var userTypeStr = HttpContext.Session.GetString("UserType") ?? "Normal";
+            UserType userType = Enum.TryParse<UserType>(userTypeStr, true, out var parsedType) ? parsedType : UserType.Normal;
+
+            // 🔽 CustomId からユーザーのシフトロールを決定（仮に DB に保持している場合）
+            var userShiftRole = currentUser.UserShiftRole;
 
             if (string.IsNullOrEmpty(selectedShifts))
             {
                 TempData["ErrorMessage"] = "シフトを選択してください。";
-                return RedirectToAction("Submission");
+                return RedirectToAction("Submission", new { periodId });
             }
 
             var shiftList = JsonConvert.DeserializeObject<List<ShiftSubmissionViewModel>>(selectedShifts);
             if (shiftList == null || shiftList.Count == 0)
             {
                 TempData["ErrorMessage"] = "シフトを選択してください。";
-                return RedirectToAction("Submission");
+                return RedirectToAction("Submission", new { periodId });
             }
 
             var submissions = new List<ShiftSubmission>();
@@ -166,11 +183,7 @@ namespace sumile.Controllers
                     _ => ShiftState.NotAccepted
                 };
 
-                if (!DateTime.TryParse(shift.Date, out var parsedDate))
-                {
-                    continue;
-                }
-
+                if (!DateTime.TryParse(shift.Date, out var parsedDate)) continue;
                 var dateUtc = DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
 
                 submissions.Add(new ShiftSubmission
@@ -181,7 +194,9 @@ namespace sumile.Controllers
                     ShiftStatus = status,
                     IsSelected = true,
                     SubmittedAt = DateTime.UtcNow,
-                    UserType = userType // ★ ここを忘れずに追加
+                    UserType = userType,
+                    UserShiftRole = userShiftRole,
+                    RecruitmentPeriodId = periodId
                 });
             }
 
@@ -189,12 +204,13 @@ namespace sumile.Controllers
             {
                 var dates = submissions.Select(s => s.Date.Date).Distinct().ToList();
                 var existing = await _context.ShiftSubmissions
-                    .Where(s => s.UserId == userId && dates.Contains(s.Date.Date))
+                    .Where(s => s.UserId == userId &&
+                                s.RecruitmentPeriodId == periodId &&
+                                dates.Contains(s.Date.Date))
                     .ToListAsync();
 
                 _context.ShiftSubmissions.RemoveRange(existing);
                 _context.ShiftSubmissions.AddRange(submissions);
-
                 await _context.SaveChangesAsync();
 
                 TempData["SuccessMessage"] = "シフトが提出されました。";
@@ -204,10 +220,8 @@ namespace sumile.Controllers
                 TempData["ErrorMessage"] = "有効なシフトが選択されていません。";
             }
 
-            return RedirectToAction(nameof(Submission));
+            return RedirectToAction("Submission", new { periodId });
         }
-
-
 
         [HttpGet]
         public async Task<IActionResult> SubmissioList(int? periodId)
@@ -290,6 +304,7 @@ namespace sumile.Controllers
                 return View(new List<ShiftSubmission>());
             }
         }
+
         private async Task<List<DateTime>> GenerateDateListForSubmissionPeriod(int? periodId)
         {
             var openPeriods = await _context.RecruitmentPeriods
@@ -336,7 +351,7 @@ namespace sumile.Controllers
     public class ShiftSubmissionViewModel
     {
         public string Date { get; set; }
-        public string ShiftType { get; set; }
+        public ShiftType ShiftType { get; set; }
         public string ShiftSymbol { get; set; }
     }
 }

@@ -81,7 +81,7 @@
                     .FirstOrDefault(s =>
                     s.UserId == user.Id
                     && s.Date.Date == date.Date
-                    && s.ShiftType == "Morning"
+                    && s.ShiftType == ShiftType.Morning
                     );
 
                     // 夜（"Night"）
@@ -89,7 +89,7 @@
                     .FirstOrDefault(s =>
                     s.UserId == user.Id
                     && s.Date.Date == date.Date
-                    && s.ShiftType == "Night"
+                    && s.ShiftType == ShiftType.Night
                     );
 
                     <td>@(morningShift != null ? "〇" : "×")</td>

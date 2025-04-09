@@ -1,13 +1,14 @@
 ﻿@using System.Globalization
+@using sumile.Models
 
 @{
     ViewData["Title"] = "シフト一覧";
 
-    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
     var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
     var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
-    var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
+    var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
 }
 
 @if (TempData["SuccessMessage"] != null)
@@ -20,18 +21,13 @@
 <h2>@ViewData["Title"]</h2>
 
 <div class="mb-3">
-    <a asp-action="Submission" controller="Shift" class="btn btn-primary">
-        シフトを提出する
-    </a>
+    <a asp-action="Submission" controller="Shift" class="btn btn-primary">シフトを提出する</a>
 
     <form asp-controller="Account" asp-action="Logout" method="post" style="display:inline;">
         @Html.AntiForgeryToken()
         <button type="submit" class="btn btn-danger">ログアウト</button>
     </form>
-
-    <a asp-action="SubmittedList" controller="Shift" class="btn btn-info">
-        提出シフト一覧
-    </a>
+    <a href="@Url.Action("Index", "Exchange")" class="btn btn-info">シフト交換</a>
 </div>
 
 <div style="margin-bottom: 1rem;">
@@ -52,14 +48,25 @@
 <script>
     document.getElementById('periodSelect')?.addEventListener('change', function () {
         var pid = this.value;
-        window.location.href = '@Url.Action("Index", "Shift")?periodId=' + pid;
+        window.location.href = '@Url.Action("Index", "Shift")' + '?periodId=' + encodeURIComponent(pid);
     });
 </script>
+
+<style>
+    .bg-accepted {
+        background-color: lightblue;
+    }
+
+    .bg-declined {
+        background-color: lavender;
+    }
+</style>
 
 <table class="table table-bordered text-center">
     <thead>
         <tr>
             <th rowspan="3">ユーザー</th>
+            <th rowspan="3">鍵持ちOK</th>
             @foreach (var date in dates)
             {
                 <th colspan="2">@date.ToString("M/d")</th>
@@ -71,7 +78,6 @@
                 <th colspan="2">@date.ToString("ddd", new CultureInfo("ja-JP"))</th>
             }
         </tr>
-
         <tr>
             @foreach (var date in dates)
             {
@@ -80,36 +86,132 @@
             }
         </tr>
     </thead>
+    @{
+        users = users.OrderBy(u => u.CustomId).ToList();
+    }
+
     <tbody>
+        <tr>
+            <th colspan="2">必要枚数</th>
+            @foreach (var date in dates)
+            {
+                var workload = (ViewBag.Workloads as List<DailyWorkload>)
+                ?.FirstOrDefault(w => w.Date.Date == date.Date);
+
+                <td colspan="2">
+                    @(workload?.RequiredCount.ToString() ?? "-")
+                </td>
+            }
+        </tr>
+
+        <tr>
+            <th colspan="2">必要人数</th>
+            @foreach (var date in dates)
+            {
+                var workload = (ViewBag.Workloads as List<DailyWorkload>)
+                ?.FirstOrDefault(w => w.Date.Date == date.Date);
+
+                var requiredPeople = workload != null
+                ? DailyWorkload.CalculateRequiredPeople(workload.RequiredCount)
+                : 0;
+
+                <td colspan="2">@requiredPeople</td>
+            }
+        </tr>
+
         @foreach (var user in users)
         {
             <tr>
                 <td>@user.CustomId (@user.Name)</td>
+
+                @{
+                    var hasKeyHolder = submissions.Any(s => s.UserId == user.Id && s.UserShiftRole == UserShiftRole.KeyHolder);
+                }
+                <td>@(hasKeyHolder ? "★" : "")</td>
+
                 @foreach (var date in dates)
                 {
-                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Morning");
-                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Night");
+                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning);
+                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Night);
 
-                    string morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
-                    string nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
+                    var morningSymbol = ConvertStateToColoredSymbol(morning?.ShiftStatus, morning?.UserShiftRole);
+                    var nightSymbol = ConvertStateToColoredSymbol(night?.ShiftStatus, night?.UserShiftRole);
 
-                    <td>@morningSymbol</td>
-                    <td>@nightSymbol</td>
+                    <td>@Html.Raw(morningSymbol)</td>
+                    <td>@Html.Raw(nightSymbol)</td>
                 }
             </tr>
         }
     </tbody>
+
+    <tfoot>
+        <tr>
+            <th colspan="2">今の〇の数</th>
+            @foreach (var date in dates)
+            {
+                var morningCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted);
+                var nightCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted);
+
+                <td>@morningCount</td>
+                <td>@nightCount</td>
+            }
+        </tr>
+
+        <tr>
+            <th colspan="2">鍵持ちの人数</th>
+            @foreach (var date in dates)
+            {
+                var morningCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted && s.UserShiftRole == UserShiftRole.KeyHolder);
+                var nightCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted && s.UserShiftRole == UserShiftRole.KeyHolder);
+
+                <td>@morningCount</td>
+                <td>@nightCount</td>
+            }
+        </tr>
+
+        <tr>
+            <th colspan="2">不足人数</th>
+            @foreach (var date in dates)
+            {
+                var workload = (ViewBag.Workloads as List<DailyWorkload>)
+                ?.FirstOrDefault(w => w.Date.Date == date.Date);
+
+                var requiredPeople = workload != null
+                ? DailyWorkload.CalculateRequiredPeople(workload.RequiredCount)
+                : 0;
+
+                var actualMorning = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted);
+                var actualNight = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted);
+
+                var shortageMorning = Math.Max(requiredPeople - actualMorning, 0);
+                var shortageNight = Math.Max(requiredPeople - actualNight, 0);
+
+                <td>@Html.Raw(shortageMorning > 0 ? $"<span class='text-danger'>{shortageMorning}</span>" : "0")</td>
+                <td>@Html.Raw(shortageNight > 0 ? $"<span class='text-danger'>{shortageNight}</span>" : "0")</td>
+            }
+        </tr>
+    </tfoot>
 </table>
 
 @functions {
-    string ConvertStateToSymbol(sumile.Models.ShiftState? state)
+    string ConvertStateToColoredSymbol(ShiftState? state, UserShiftRole? role)
     {
-        return state switch
+        string symbol = state switch
         {
-            sumile.Models.ShiftState.Accepted => "〇",
-            sumile.Models.ShiftState.WantToGiveAway => "△",
-            sumile.Models.ShiftState.NotAccepted => "",
+            ShiftState.Accepted => "○",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.NotAccepted => "",
             _ => "×"
+        };
+
+        if (symbol != "○") return symbol;
+
+        return role switch
+        {
+            UserShiftRole.KeyHolder => "<span style='color:red;'>○</span>",
+            UserShiftRole.Normal => "<span style='color:black;'>○</span>",
+            UserShiftRole.New => "<span style='color:gray;'>○</span>",
+            _ => symbol
         };
     }
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using sumile.Data;
@@ -11,9 +12,11 @@ using sumile.Data;
 namespace sumile.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250402105458_UserShiftRole")]
+    partial class UserShiftRole
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,33 +24,6 @@ namespace sumile.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("DailyWorkload", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("RecruitmentPeriodId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("RequiredCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("RequiredWorkers")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RecruitmentPeriodId");
-
-                    b.ToTable("DailyWorkloads");
-                });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
@@ -202,9 +178,6 @@ namespace sumile.Migrations
 
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("boolean");
-
-                    b.Property<int>("Gender")
-                        .HasColumnType("integer");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
@@ -394,24 +367,19 @@ namespace sumile.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime?>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("AcceptedByUserId")
+                        .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<int?>("AcceptedShiftSubmissionId")
-                        .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("OfferedShiftSubmissionId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("RequestedByUserId")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("ShiftAssignmentId")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -420,20 +388,13 @@ namespace sumile.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("UserId")
-                        .HasColumnType("text");
-
                     b.HasKey("Id");
 
                     b.HasIndex("AcceptedByUserId");
 
-                    b.HasIndex("AcceptedShiftSubmissionId");
-
-                    b.HasIndex("OfferedShiftSubmissionId");
-
                     b.HasIndex("RequestedByUserId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("ShiftAssignmentId");
 
                     b.ToTable("ShiftExchanges");
                 });
@@ -481,17 +442,6 @@ namespace sumile.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("ShiftSubmissions");
-                });
-
-            modelBuilder.Entity("DailyWorkload", b =>
-                {
-                    b.HasOne("sumile.Models.RecruitmentPeriod", "RecruitmentPeriod")
-                        .WithMany()
-                        .HasForeignKey("RecruitmentPeriodId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("RecruitmentPeriod");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -595,15 +545,7 @@ namespace sumile.Migrations
                 {
                     b.HasOne("sumile.Models.ApplicationUser", "AcceptedByUser")
                         .WithMany()
-                        .HasForeignKey("AcceptedByUserId");
-
-                    b.HasOne("sumile.Models.ShiftSubmission", "AcceptedShiftSubmission")
-                        .WithMany()
-                        .HasForeignKey("AcceptedShiftSubmissionId");
-
-                    b.HasOne("sumile.Models.ShiftSubmission", "OfferedShiftSubmission")
-                        .WithMany()
-                        .HasForeignKey("OfferedShiftSubmissionId")
+                        .HasForeignKey("AcceptedByUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -613,19 +555,17 @@ namespace sumile.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("sumile.Models.ApplicationUser", "User")
+                    b.HasOne("sumile.Models.ShiftAssignment", "ShiftAssignment")
                         .WithMany()
-                        .HasForeignKey("UserId");
+                        .HasForeignKey("ShiftAssignmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("AcceptedByUser");
 
-                    b.Navigation("AcceptedShiftSubmission");
-
-                    b.Navigation("OfferedShiftSubmission");
-
                     b.Navigation("RequestedByUser");
 
-                    b.Navigation("User");
+                    b.Navigation("ShiftAssignment");
                 });
 
             modelBuilder.Entity("sumile.Models.ShiftSubmission", b =>

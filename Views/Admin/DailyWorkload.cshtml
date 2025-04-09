@@ -1,0 +1,52 @@
+﻿@using sumile.Models
+@{
+    ViewData["Title"] = "枚数編集";
+    var periods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new();
+    var selectedPeriodId = ViewBag.SelectedPeriodId as int? ?? 0;
+    var dates = ViewBag.Dates as List<DateTime> ?? new();
+    var workloads = ViewBag.Workloads as List<DailyWorkload> ?? new(); // ← 修正
+}
+
+<h2>枚数編集</h2>
+
+<form method="post" asp-action="EditDailyWorkload">
+    <input type="hidden" name="periodId" value="@selectedPeriodId" />
+
+    <div class="mb-3">
+        <label>募集期間選択：</label>
+        <select class="form-select" onchange="location.href='?periodId=' + this.value;">
+            @foreach (var p in periods)
+            {
+                <option value="@p.Id" selected="@(p.Id == selectedPeriodId)">
+                    @p.StartDate.ToString("yyyy/MM/dd") ～ @p.EndDate.ToString("yyyy/MM/dd")
+                </option>
+            }
+        </select>
+    </div>
+
+    <table class="table table-bordered text-center">
+        <thead class="table-light">
+            <tr>
+                <th>日付</th>
+                <th>必要枚数</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var date in dates)
+            {
+                var value = workloads.FirstOrDefault(w => w.Date.Date == date.Date)?.RequiredCount ?? 0;
+                <tr>
+                    <td>@date.ToString("yyyy/MM/dd (ddd)", System.Globalization.CultureInfo.GetCultureInfo("ja-JP"))</td>
+                    <td>
+                        <input type="number" name="workloads[@date.ToString("yyyy-MM-dd")]" class="form-control" value="@value" min="0" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="d-flex justify-content-between mt-3">
+        <a asp-action="Index" class="btn btn-secondary">戻る</a>
+        <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+</form>

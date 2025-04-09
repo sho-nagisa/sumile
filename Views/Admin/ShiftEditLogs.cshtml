@@ -1,0 +1,64 @@
+﻿@model List<sumile.Models.ShiftEditLog>
+@{
+    ViewData["Title"] = "シフト変更ログ";
+    var periods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
+    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<form method="get" asp-action="ShiftEditLogs">
+    <label for="periodSelect">募集期間：</label>
+    <select name="periodId" id="periodSelect" onchange="this.form.submit()" class="form-select" style="width:auto; display:inline;">
+        <option value="">すべて</option>
+        @foreach (var period in periods)
+        {
+            <option value="@period.Id" selected="@(period.Id == selectedPeriodId)">
+                @period.StartDate.ToString("yyyy/MM/dd") ～ @period.EndDate.ToString("yyyy/MM/dd")
+            </option>
+        }
+    </select>
+</form>
+
+<table class="table table-bordered mt-3">
+    <thead>
+        <tr>
+            <th>対象ユーザー</th>
+            <th>シフト日</th>
+            <th>区分</th>
+            <th>旧状態</th>
+            <th>新状態</th>
+            <th>編集者</th>
+            <th>編集日時</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var log in Model)
+        {
+            <tr class="@(log.OldState != log.NewState ? "table-warning" : "")">
+                <td>@log.TargetUser?.Name</td>
+                <td>@log.ShiftDate.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                <td>@log.ShiftType</td>
+                <td>@ConvertStateToSymbol(log.OldState)</td>
+                <td>@ConvertStateToSymbol(log.NewState)</td>
+                <td>@log.AdminUser?.Name</td>
+                <td>@log.EditDate.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+<a asp-action="Index" class="btn btn-secondary">戻る</a>
+
+
+@functions {
+    string ConvertStateToSymbol(sumile.Models.ShiftState state)
+    {
+        return state switch
+        {
+            sumile.Models.ShiftState.Accepted => "〇",
+            sumile.Models.ShiftState.WantToGiveAway => "△",
+            sumile.Models.ShiftState.NotAccepted => "",
+            _ => "×"
+        };
+    }
+}

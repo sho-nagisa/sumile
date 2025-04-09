@@ -59,7 +59,7 @@ namespace sumile.Controllers
                 UserName = newCustomId.ToString(),
                 CustomId = newCustomId,
                 Name = model.Name,
-                UserType = "Normal" // 登録時は基本的に Normal 扱いにしておく
+                UserType = "0" // 登録時は基本的に Normal 扱いにしておく
             };
 
             var result = await _userManager.CreateAsync(user, model.Password);
@@ -77,6 +77,7 @@ namespace sumile.Controllers
             // 自動ログイン＋セッション保存
             await _signInManager.SignInAsync(user, isPersistent: false);
             HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
+            HttpContext.Session.SetString("UserId", user.Id);
 
             TempData["SuccessMessage"] = "登録が成功しました";
             return RedirectToAction("Index", "Shift");
@@ -115,6 +116,7 @@ namespace sumile.Controllers
             {
                 // ★ セッションに UserType を保存
                 HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
+                HttpContext.Session.SetString("UserId", user.Id);
 
                 return RedirectToAction("Index", "Shift");
             }

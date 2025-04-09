@@ -2,11 +2,15 @@
     ViewData["Title"] = "シフト提出";
     var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
     var existingSubs = ViewBag.ExistingSubmissions as List<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
+    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
 }
 
 <h2>@ViewData["Title"]</h2>
 
 <form asp-action="SubmitShifts" method="post" id="shiftForm">
+    @* ★ 追加: 募集期間IDを渡す *@
+    <input type="hidden" name="periodId" value="@selectedPeriodId" />
+
     <input type="hidden" name="selectedShifts" id="selectedShifts" />
 
     <table class="table table-bordered text-center">
@@ -20,14 +24,15 @@
         <tbody>
             @foreach (var date in dates)
             {
-                var morning = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == "Morning");
-                var night = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == "Night");
+                var morning = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning);
+                var night = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night);
 
                 var morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
                 var nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
 
                 bool morningSelected = (morningSymbol == "〇" || morningSymbol == "△");
                 bool nightSelected = (nightSymbol == "〇" || nightSymbol == "△");
+
                 <tr>
                     <td>@date.ToLocalTime().ToString("yyyy-MM-dd")</td>
                     <td class="shift-cell @(morningSelected ? "selected" : "")"

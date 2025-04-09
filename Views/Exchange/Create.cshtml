@@ -1,0 +1,119 @@
+﻿@using sumile.Models
+@{
+    ViewData["Title"] = "シフト交換希望を出す";
+    var shiftsByPeriod = ViewBag.ShiftsByPeriod as Dictionary<RecruitmentPeriod, List<ShiftSubmission>> ?? new();
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<input type="hidden" id="selectedShiftId" name="offeredShiftSubmissionId" />
+
+@foreach (var periodGroup in shiftsByPeriod)
+{
+    <h4>募集期間: @periodGroup.Key.StartDate.ToString("yyyy-MM-dd") ～ @periodGroup.Key.EndDate.ToString("yyyy-MM-dd")</h4>
+    <table class="table table-bordered text-center mb-5">
+        <thead>
+            <tr>
+                <th>日付</th>
+                <th>朝 (Morning)</th>
+                <th>夜 (Night)</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var date in periodGroup.Value.Select(s => s.Date.Date).Distinct().OrderBy(d => d))
+            {
+                var morning = periodGroup.Value.FirstOrDefault(s => s.Date.Date == date && s.ShiftType == ShiftType.Morning);
+                var night = periodGroup.Value.FirstOrDefault(s => s.Date.Date == date && s.ShiftType == ShiftType.Night);
+
+                <tr>
+                    <td>@date.ToString("yyyy-MM-dd")</td>
+                    <td class="shift-cell @(IsSelectable(morning) ? "selectable-shift" : "disabled")"
+                        data-shift-id="@morning?.Id"
+                        data-date="@date.ToString("yyyy-MM-dd")"
+                        data-type="朝"
+                        data-role="@morning?.UserShiftRole">
+                        @ConvertToSymbol(morning?.ShiftStatus)
+                    </td>
+                    <td class="shift-cell @(IsSelectable(night) ? "selectable-shift" : "disabled")"
+                        data-shift-id="@night?.Id"
+                        data-date="@date.ToString("yyyy-MM-dd")"
+                        data-type="夜"
+                        data-role="@night?.UserShiftRole">
+                        @ConvertToSymbol(night?.ShiftStatus)
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<!-- モーダル -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" asp-action="Create">
+                <div class="modal-header">
+                    <h5 class="modal-title">交換希望を出しますか？</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="confirmText"></p>
+                    <input type="hidden" name="offeredShiftSubmissionId" id="modalShiftId" />
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">はい、出す</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            function convertRole(role) {
+                switch (role) {
+                    case "New": return "N";
+                    case "Normal": return "NK";
+                    case "KeyHolder": return "鍵";
+                    default: return "―";
+                }
+            }
+
+            document.querySelectorAll(".selectable-shift").forEach(cell => {
+                cell.addEventListener("click", function () {
+                    const shiftId = this.dataset.shiftId;
+                    const date = this.dataset.date;
+                    const type = this.dataset.type;
+                    const role = this.dataset.role;
+
+                    document.getElementById("modalShiftId").value = shiftId;
+                    document.getElementById("confirmText").textContent =
+                        `${date} の ${type}（${convertRole(role)}）を交換に出します。よろしいですか？`;
+
+                    const modal = new bootstrap.Modal(document.getElementById("confirmModal"));
+                    modal.show();
+                });
+            });
+        });
+    </script>
+}
+
+@functions {
+    string ConvertToSymbol(ShiftState? state)
+    {
+        return state switch
+        {
+            ShiftState.Accepted => "〇",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.NotAccepted => "×",
+            _ => "×"
+        };
+    }
+
+    bool IsSelectable(ShiftSubmission? sub)
+    {
+        return sub?.ShiftStatus == ShiftState.Accepted || sub?.ShiftStatus == ShiftState.WantToGiveAway;
+    }
+}

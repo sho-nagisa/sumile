@@ -3,15 +3,17 @@
     var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
     var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
     var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
+    var originalLogs = ViewBag.OriginalLogs as List<sumile.Models.ShiftEditLog> ?? new List<sumile.Models.ShiftEditLog>();
+    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
 }
 
 <h2>@ViewData["Title"]</h2>
 
 <form method="get" asp-action="EditShifts">
-    <select name="periodId" onchange="this.form.submit()">
+    <select name="periodId" onchange="this.form.submit()" class="form-select" style="width:auto; display:inline;">
         @foreach (var rec in ViewBag.RecruitmentPeriods as IEnumerable<sumile.Models.RecruitmentPeriod>)
         {
-            <option value="@rec.Id" selected="@(rec.Id == ViewBag.SelectedPeriodId ? "selected" : null)">
+            <option value="@rec.Id" selected="@(rec.Id == selectedPeriodId)">
                 @rec.StartDate.ToString("yyyy-MM-dd") - @rec.EndDate.ToString("yyyy-MM-dd")
             </option>
         }
@@ -23,6 +25,7 @@
 
 <form method="post" id="updateForm">
     @Html.AntiForgeryToken()
+    <input type="hidden" id="selectedPeriodId" value="@selectedPeriodId" />
 
     <table class="table table-bordered text-center">
         <thead>
@@ -54,14 +57,36 @@
                     <td>@user.CustomId (@user.Name)</td>
                     @foreach (var date in dates)
                     {
-                        var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Morning");
-                        var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == "Night");
+                        var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning);
+                        var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Night);
+
+                        var morningOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDate.Date == date.Date && l.ShiftType == ShiftType.Morning);
+                        var nightOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDate.Date == date.Date && l.ShiftType == ShiftType.Night);
 
                         string morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
                         string nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
 
-                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Morning">@morningSymbol</td>
-                        <td class="editable-cell" data-user="@user.Id" data-date="@date.ToString("yyyy-MM-dd")" data-shift="Night">@nightSymbol</td>
+                        string morningOrigSymbol = ConvertStateToSymbol(morningOriginal?.OldState);
+                        string nightOrigSymbol = ConvertStateToSymbol(nightOriginal?.OldState);
+
+                        string morningClass = morningOrigSymbol != morningSymbol ? "bg-warning" : "";
+                        string nightClass = nightOrigSymbol != nightSymbol ? "bg-warning" : "";
+
+                        <td class="editable-cell @morningClass"
+                            data-user="@user.Id"
+                            data-date="@date.ToString("yyyy-MM-dd")"
+                            data-shift="Morning"
+                            data-original="@morningOrigSymbol">
+                            @morningSymbol
+                        </td>
+
+                        <td class="editable-cell @nightClass"
+                            data-user="@user.Id"
+                            data-date="@date.ToString("yyyy-MM-dd")"
+                            data-shift="Night"
+                            data-original="@nightOrigSymbol">
+                            @nightSymbol
+                        </td>
                     }
                 </tr>
             }
@@ -73,6 +98,17 @@
 </form>
 
 @section Scripts {
+    <style>
+        .bg-warning {
+            background-color: #fff3cd !important;
+        }
+
+        .editable-cell:hover {
+            cursor: pointer;
+            opacity: 0.8;
+        }
+    </style>
+
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             const cells = document.querySelectorAll(".editable-cell");
@@ -90,7 +126,7 @@
                     let shiftData = {
                         userId: this.dataset.user,
                         date: this.dataset.date,
-                        shiftType: this.dataset.shift,
+                        shiftType: this.dataset.shift === "Morning" ? 0 : 1,
                         shiftStatus: nextSymbol
                     };
 
@@ -99,16 +135,26 @@
                         u.date === shiftData.date &&
                         u.shiftType === shiftData.shiftType
                     );
+
                     if (existingIndex >= 0) {
                         updates[existingIndex] = shiftData;
                     } else {
                         updates.push(shiftData);
                     }
+
+                    let original = this.dataset.original;
+                    if (original !== nextSymbol) {
+                        this.classList.add("bg-warning");
+                    } else {
+                        this.classList.remove("bg-warning");
+                    }
                 });
             });
 
             document.getElementById("saveChanges").addEventListener("click", function () {
-                fetch('/Admin/UpdateShifts', {
+                const periodId = document.getElementById("selectedPeriodId").value;
+
+                fetch('/Admin/UpdateShifts?periodId=' + periodId, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -116,19 +162,13 @@
                     },
                     body: JSON.stringify(updates)
                 })
-                    .then(response => response.text())
-                    .then(text => {
-                        try {
-                            const data = JSON.parse(text);
-                            if (data.success) {
-                                alert("シフトを更新しました");
-                                location.reload();
-                            } else {
-                                alert("更新に失敗しました: " + data.error);
-                            }
-                        } catch (e) {
-                            console.error("サーバーから返されたHTMLやエラーページ:", text);
-                            alert("サーバーから予期しない応答が返されました（詳細はコンソール）");
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert("シフトを更新しました");
+                            location.reload();
+                        } else {
+                            alert("更新に失敗しました: " + data.error);
                         }
                     })
                     .catch(err => {
@@ -139,7 +179,6 @@
         });
     </script>
 }
-
 
 @functions {
     string ConvertStateToSymbol(sumile.Models.ShiftState? state)
