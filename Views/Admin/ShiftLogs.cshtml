@@ -25,7 +25,7 @@
                 <td>@log.AdminUser?.Name (@log.AdminUserId)</td>
                 <td>@log.TargetUser?.Name (@log.TargetUserId)</td>
                 <td>@log.EditDate.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
-                <td>@log.ShiftDate.ToString("yyyy-MM-dd")</td>
+                <td>@log.ShiftDay?.Date.ToLocalTime().ToString("yyyy-MM-dd")</td>
                 <td>@log.ShiftType</td>
                 <td>@ConvertToSymbol(log.OldState)</td>
                 <td>@ConvertToSymbol(log.NewState)</td>

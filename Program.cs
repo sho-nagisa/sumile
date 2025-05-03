@@ -36,6 +36,10 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireLowercase = true;
     options.Password.RequireDigit = true;
     options.Password.RequireNonAlphanumeric = false;
+
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10); // ロック時間
+    options.Lockout.MaxFailedAccessAttempts = 5; // 最大失敗回数
+    options.Lockout.AllowedForNewUsers = true;   // 新規ユーザーにもロックアウトを適用
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
@@ -46,11 +50,14 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromMinutes(30); // セッションの有効時間
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.MaxAge = TimeSpan.FromMinutes(30); // クライアント側にも有効期限を通知
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always; // HTTPS のときのみ送信
+    options.Cookie.SameSite = SameSiteMode.Strict; // クロスサイト送信を防止
 });
 
 // MVC 用のサービス登録
 builder.Services.AddControllersWithViews();
-
+builder.Services.AddScoped<ShiftPdfService>();
 // カスタムサービスの DI 登録
 builder.Services.AddScoped<IShiftService, ShiftService>();
 
@@ -67,6 +74,14 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Add("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Add("X-Frame-Options", "DENY");
+    context.Response.Headers.Add("X-XSS-Protection", "1; mode=block");
+    context.Response.Headers.Add("Referrer-Policy", "no-referrer");
+    await next();
+});
 
 // ★ セッションの使用（Authenticationより前でも後でも可）
 app.UseSession();

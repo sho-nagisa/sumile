@@ -18,6 +18,6 @@ namespace sumile.Data
         public DbSet<RecruitmentPeriod> RecruitmentPeriods { get; set; }
         public DbSet<ShiftEditLog> ShiftEditLogs { get; set; }
         public DbSet<DailyWorkload> DailyWorkloads { get; set; }
-
+        public DbSet<ShiftDay> ShiftDays { get; set; }
     }
 }

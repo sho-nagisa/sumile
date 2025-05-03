@@ -6,9 +6,10 @@
 
     var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
-    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
-    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
-    var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
+    var shiftDays = ViewBag.Dates as List<ShiftDay>; // 変更する場合は List<ShiftDay> に
+    var submissions = ViewBag.Submissions as List<ShiftSubmission>;
+    var users = ViewBag.Users as List<dynamic>;
+    var workloads = ViewBag.Workloads as List<DailyWorkload>;
 }
 
 @if (TempData["SuccessMessage"] != null)
@@ -52,166 +53,11 @@
     });
 </script>
 
-<style>
-    .bg-accepted {
-        background-color: lightblue;
-    }
-
-    .bg-declined {
-        background-color: lavender;
-    }
-</style>
-
-<table class="table table-bordered text-center">
-    <thead>
-        <tr>
-            <th rowspan="3">ユーザー</th>
-            <th rowspan="3">鍵持ちOK</th>
-            @foreach (var date in dates)
-            {
-                <th colspan="2">@date.ToString("M/d")</th>
-            }
-        </tr>
-        <tr>
-            @foreach (var date in dates)
-            {
-                <th colspan="2">@date.ToString("ddd", new CultureInfo("ja-JP"))</th>
-            }
-        </tr>
-        <tr>
-            @foreach (var date in dates)
-            {
-                <th>上</th>
-                <th>敷</th>
-            }
-        </tr>
-    </thead>
-    @{
-        users = users.OrderBy(u => u.CustomId).ToList();
-    }
-
-    <tbody>
-        <tr>
-            <th colspan="2">必要枚数</th>
-            @foreach (var date in dates)
-            {
-                var workload = (ViewBag.Workloads as List<DailyWorkload>)
-                ?.FirstOrDefault(w => w.Date.Date == date.Date);
-
-                <td colspan="2">
-                    @(workload?.RequiredCount.ToString() ?? "-")
-                </td>
-            }
-        </tr>
-
-        <tr>
-            <th colspan="2">必要人数</th>
-            @foreach (var date in dates)
-            {
-                var workload = (ViewBag.Workloads as List<DailyWorkload>)
-                ?.FirstOrDefault(w => w.Date.Date == date.Date);
-
-                var requiredPeople = workload != null
-                ? DailyWorkload.CalculateRequiredPeople(workload.RequiredCount)
-                : 0;
-
-                <td colspan="2">@requiredPeople</td>
-            }
-        </tr>
-
-        @foreach (var user in users)
-        {
-            <tr>
-                <td>@user.CustomId (@user.Name)</td>
-
-                @{
-                    var hasKeyHolder = submissions.Any(s => s.UserId == user.Id && s.UserShiftRole == UserShiftRole.KeyHolder);
-                }
-                <td>@(hasKeyHolder ? "★" : "")</td>
-
-                @foreach (var date in dates)
-                {
-                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning);
-                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Night);
-
-                    var morningSymbol = ConvertStateToColoredSymbol(morning?.ShiftStatus, morning?.UserShiftRole);
-                    var nightSymbol = ConvertStateToColoredSymbol(night?.ShiftStatus, night?.UserShiftRole);
-
-                    <td>@Html.Raw(morningSymbol)</td>
-                    <td>@Html.Raw(nightSymbol)</td>
-                }
-            </tr>
-        }
-    </tbody>
-
-    <tfoot>
-        <tr>
-            <th colspan="2">今の〇の数</th>
-            @foreach (var date in dates)
-            {
-                var morningCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted);
-                var nightCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted);
-
-                <td>@morningCount</td>
-                <td>@nightCount</td>
-            }
-        </tr>
-
-        <tr>
-            <th colspan="2">鍵持ちの人数</th>
-            @foreach (var date in dates)
-            {
-                var morningCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted && s.UserShiftRole == UserShiftRole.KeyHolder);
-                var nightCount = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted && s.UserShiftRole == UserShiftRole.KeyHolder);
-
-                <td>@morningCount</td>
-                <td>@nightCount</td>
-            }
-        </tr>
-
-        <tr>
-            <th colspan="2">不足人数</th>
-            @foreach (var date in dates)
-            {
-                var workload = (ViewBag.Workloads as List<DailyWorkload>)
-                ?.FirstOrDefault(w => w.Date.Date == date.Date);
-
-                var requiredPeople = workload != null
-                ? DailyWorkload.CalculateRequiredPeople(workload.RequiredCount)
-                : 0;
-
-                var actualMorning = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted);
-                var actualNight = submissions.Count(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted);
-
-                var shortageMorning = Math.Max(requiredPeople - actualMorning, 0);
-                var shortageNight = Math.Max(requiredPeople - actualNight, 0);
-
-                <td>@Html.Raw(shortageMorning > 0 ? $"<span class='text-danger'>{shortageMorning}</span>" : "0")</td>
-                <td>@Html.Raw(shortageNight > 0 ? $"<span class='text-danger'>{shortageNight}</span>" : "0")</td>
-            }
-        </tr>
-    </tfoot>
-</table>
-
-@functions {
-    string ConvertStateToColoredSymbol(ShiftState? state, UserShiftRole? role)
-    {
-        string symbol = state switch
-        {
-            ShiftState.Accepted => "○",
-            ShiftState.WantToGiveAway => "△",
-            ShiftState.NotAccepted => "",
-            _ => "×"
-        };
-
-        if (symbol != "○") return symbol;
-
-        return role switch
-        {
-            UserShiftRole.KeyHolder => "<span style='color:red;'>○</span>",
-            UserShiftRole.Normal => "<span style='color:black;'>○</span>",
-            UserShiftRole.New => "<span style='color:gray;'>○</span>",
-            _ => symbol
-        };
-    }
+@if (selectedPeriodId.HasValue)
+{
+    <div class="mt-4">
+        <h4>シフト表（PDF）</h4>
+        <iframe src="@($"/shift_pdfs/shift_{selectedPeriodId}.pdf?{DateTime.Now.Ticks}")"
+                width="100%" height="800px" style="border:1px solid #ccc;"></iframe>
+    </div>
 }

@@ -109,21 +109,28 @@ namespace sumile.Controllers
                 return View(model);
             }
 
+            // ★ ロックアウト対応：失敗時にカウント、ロック状態も確認
             var result = await _signInManager.PasswordSignInAsync(
-                user.UserName, model.Password, model.RememberMe, lockoutOnFailure: false);
+                user.UserName, model.Password, model.RememberMe, lockoutOnFailure: true);
 
             if (result.Succeeded)
             {
-                // ★ セッションに UserType を保存
                 HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
                 HttpContext.Session.SetString("UserId", user.Id);
+                HttpContext.Session.SetString("IsAdmin", user.IsAdmin.ToString());
 
                 return RedirectToAction("Index", "Shift");
+            }
+            else if (result.IsLockedOut)
+            {
+                ModelState.AddModelError(string.Empty, "アカウントがロックされています。しばらくしてから再試行してください。");
+                return View(model);
             }
 
             ModelState.AddModelError(string.Empty, "ログインに失敗しました。");
             return View(model);
         }
+
 
         // ========== ログアウト ==========
         [HttpPost]

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using sumile.Data;
@@ -11,9 +12,11 @@ using sumile.Data;
 namespace sumile.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250501231924_UpdateShiftDayStructure")]
+    partial class UpdateShiftDayStructure
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -465,8 +468,14 @@ namespace sumile.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("IsSelected")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("RecruitmentPeriodId")
+                        .HasColumnType("integer");
 
                     b.Property<int>("ShiftDayId")
                         .HasColumnType("integer");
@@ -491,6 +500,8 @@ namespace sumile.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RecruitmentPeriodId");
 
                     b.HasIndex("ShiftDayId");
 
@@ -657,6 +668,12 @@ namespace sumile.Migrations
 
             modelBuilder.Entity("sumile.Models.ShiftSubmission", b =>
                 {
+                    b.HasOne("sumile.Models.RecruitmentPeriod", "RecruitmentPeriod")
+                        .WithMany()
+                        .HasForeignKey("RecruitmentPeriodId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("sumile.Models.ShiftDay", "ShiftDay")
                         .WithMany("ShiftSubmissions")
                         .HasForeignKey("ShiftDayId")
@@ -668,6 +685,8 @@ namespace sumile.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("RecruitmentPeriod");
 
                     b.Navigation("ShiftDay");
 

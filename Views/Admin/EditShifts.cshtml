@@ -1,7 +1,7 @@
 ﻿@{
     ViewData["Title"] = "シフト編集";
     var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
-    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
+    var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
     var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
     var originalLogs = ViewBag.OriginalLogs as List<sumile.Models.ShiftEditLog> ?? new List<sumile.Models.ShiftEditLog>();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
@@ -31,19 +31,19 @@
         <thead>
             <tr>
                 <th rowspan="3">ユーザー</th>
-                @foreach (var date in dates)
+                @foreach (var day in shiftDays)
                 {
-                    <th colspan="2">@date.ToString("M月d日")</th>
+                    <th colspan="2">@day.Date.ToString("M月d日")</th>
                 }
             </tr>
             <tr>
-                @foreach (var date in dates)
+                @foreach (var day in shiftDays)
                 {
-                    <th colspan="2">(@date.ToString("ddd"))</th>
+                    <th colspan="2">(@day.Date.ToString("ddd"))</th>
                 }
             </tr>
             <tr>
-                @foreach (var date in dates)
+                @foreach (var _ in shiftDays)
                 {
                     <th>朝</th>
                     <th>夜</th>
@@ -55,13 +55,13 @@
             {
                 <tr>
                     <td>@user.CustomId (@user.Name)</td>
-                    @foreach (var date in dates)
+                    @foreach (var day in shiftDays)
                     {
-                        var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning);
-                        var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.Date.Date == date.Date && s.ShiftType == ShiftType.Night);
+                        var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
+                        var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
 
-                        var morningOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDate.Date == date.Date && l.ShiftType == ShiftType.Morning);
-                        var nightOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDate.Date == date.Date && l.ShiftType == ShiftType.Night);
+                        var morningOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDayId == day.Id && l.ShiftType == ShiftType.Morning);
+                        var nightOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDayId == day.Id && l.ShiftType == ShiftType.Night);
 
                         string morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
                         string nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
@@ -74,7 +74,7 @@
 
                         <td class="editable-cell @morningClass"
                             data-user="@user.Id"
-                            data-date="@date.ToString("yyyy-MM-dd")"
+                            data-date="@day.Date.ToString("yyyy-MM-dd")"
                             data-shift="Morning"
                             data-original="@morningOrigSymbol">
                             @morningSymbol
@@ -82,7 +82,7 @@
 
                         <td class="editable-cell @nightClass"
                             data-user="@user.Id"
-                            data-date="@date.ToString("yyyy-MM-dd")"
+                            data-date="@day.Date.ToString("yyyy-MM-dd")"
                             data-shift="Night"
                             data-original="@nightOrigSymbol">
                             @nightSymbol

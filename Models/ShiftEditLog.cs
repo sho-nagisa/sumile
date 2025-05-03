@@ -12,15 +12,15 @@
 
         public DateTime EditDate { get; set; }
 
-        public DateTime ShiftDate { get; set; }
+        // ✅ ShiftDayIdで日付と募集期間を一元管理
+        public int ShiftDayId { get; set; }
+        public ShiftDay ShiftDay { get; set; }
+
         public ShiftType ShiftType { get; set; }
 
         public ShiftState OldState { get; set; }
         public ShiftState NewState { get; set; }
 
         public string Note { get; set; }  // 任意のコメント欄
-        public int RecruitmentPeriodId { get; set; }
-        public RecruitmentPeriod RecruitmentPeriod { get; set; }
     }
-
 }

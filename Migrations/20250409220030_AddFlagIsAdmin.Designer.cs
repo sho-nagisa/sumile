@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using sumile.Data;
@@ -11,9 +12,11 @@ using sumile.Data;
 namespace sumile.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250409220030_AddFlagIsAdmin")]
+    partial class AddFlagIsAdmin
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -30,19 +33,21 @@ namespace sumile.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RecruitmentPeriodId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("RequiredCount")
                         .HasColumnType("integer");
 
                     b.Property<int>("RequiredWorkers")
                         .HasColumnType("integer");
 
-                    b.Property<int>("ShiftDayId")
-                        .HasColumnType("integer");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("ShiftDayId")
-                        .IsUnique();
+                    b.HasIndex("RecruitmentPeriodId");
 
                     b.ToTable("DailyWorkloads");
                 });
@@ -338,27 +343,6 @@ namespace sumile.Migrations
                     b.ToTable("ShiftAssignments");
                 });
 
-            modelBuilder.Entity("sumile.Models.ShiftDay", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("RecruitmentPeriodId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RecruitmentPeriodId");
-
-                    b.ToTable("ShiftDays");
-                });
-
             modelBuilder.Entity("sumile.Models.ShiftEditLog", b =>
                 {
                     b.Property<int>("Id")
@@ -384,8 +368,11 @@ namespace sumile.Migrations
                     b.Property<int>("OldState")
                         .HasColumnType("integer");
 
-                    b.Property<int>("ShiftDayId")
+                    b.Property<int>("RecruitmentPeriodId")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime>("ShiftDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("ShiftType")
                         .HasColumnType("integer");
@@ -398,7 +385,7 @@ namespace sumile.Migrations
 
                     b.HasIndex("AdminUserId");
 
-                    b.HasIndex("ShiftDayId");
+                    b.HasIndex("RecruitmentPeriodId");
 
                     b.HasIndex("TargetUserId");
 
@@ -465,10 +452,13 @@ namespace sumile.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("IsSelected")
                         .HasColumnType("boolean");
 
-                    b.Property<int>("ShiftDayId")
+                    b.Property<int>("RecruitmentPeriodId")
                         .HasColumnType("integer");
 
                     b.Property<int>("ShiftStatus")
@@ -492,7 +482,7 @@ namespace sumile.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ShiftDayId");
+                    b.HasIndex("RecruitmentPeriodId");
 
                     b.HasIndex("UserId");
 
@@ -501,13 +491,13 @@ namespace sumile.Migrations
 
             modelBuilder.Entity("DailyWorkload", b =>
                 {
-                    b.HasOne("sumile.Models.ShiftDay", "ShiftDay")
-                        .WithOne("DailyWorkload")
-                        .HasForeignKey("DailyWorkload", "ShiftDayId")
+                    b.HasOne("sumile.Models.RecruitmentPeriod", "RecruitmentPeriod")
+                        .WithMany()
+                        .HasForeignKey("RecruitmentPeriodId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("ShiftDay");
+                    b.Navigation("RecruitmentPeriod");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -580,17 +570,6 @@ namespace sumile.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("sumile.Models.ShiftDay", b =>
-                {
-                    b.HasOne("sumile.Models.RecruitmentPeriod", "RecruitmentPeriod")
-                        .WithMany("ShiftDays")
-                        .HasForeignKey("RecruitmentPeriodId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("RecruitmentPeriod");
-                });
-
             modelBuilder.Entity("sumile.Models.ShiftEditLog", b =>
                 {
                     b.HasOne("sumile.Models.ApplicationUser", "AdminUser")
@@ -599,9 +578,9 @@ namespace sumile.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("sumile.Models.ShiftDay", "ShiftDay")
+                    b.HasOne("sumile.Models.RecruitmentPeriod", "RecruitmentPeriod")
                         .WithMany()
-                        .HasForeignKey("ShiftDayId")
+                        .HasForeignKey("RecruitmentPeriodId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -613,7 +592,7 @@ namespace sumile.Migrations
 
                     b.Navigation("AdminUser");
 
-                    b.Navigation("ShiftDay");
+                    b.Navigation("RecruitmentPeriod");
 
                     b.Navigation("TargetUser");
                 });
@@ -657,9 +636,9 @@ namespace sumile.Migrations
 
             modelBuilder.Entity("sumile.Models.ShiftSubmission", b =>
                 {
-                    b.HasOne("sumile.Models.ShiftDay", "ShiftDay")
-                        .WithMany("ShiftSubmissions")
-                        .HasForeignKey("ShiftDayId")
+                    b.HasOne("sumile.Models.RecruitmentPeriod", "RecruitmentPeriod")
+                        .WithMany()
+                        .HasForeignKey("RecruitmentPeriodId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -669,22 +648,9 @@ namespace sumile.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("ShiftDay");
+                    b.Navigation("RecruitmentPeriod");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("sumile.Models.RecruitmentPeriod", b =>
-                {
-                    b.Navigation("ShiftDays");
-                });
-
-            modelBuilder.Entity("sumile.Models.ShiftDay", b =>
-                {
-                    b.Navigation("DailyWorkload")
-                        .IsRequired();
-
-                    b.Navigation("ShiftSubmissions");
                 });
 #pragma warning restore 612, 618
         }

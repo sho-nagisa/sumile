@@ -9,5 +9,6 @@ namespace sumile.Models
         public int CustomId { get; set; }
         public UserShiftRole UserShiftRole { get; set; }
         public int Gender {  get; set; }
+        public bool IsAdmin { get; set; }
     }
 }

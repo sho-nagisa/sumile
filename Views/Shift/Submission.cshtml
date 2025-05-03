@@ -1,16 +1,16 @@
-﻿@{
+﻿@using sumile.Models
+
+@{
     ViewData["Title"] = "シフト提出";
-    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
-    var existingSubs = ViewBag.ExistingSubmissions as List<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
+    var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
+    var existingSubs = ViewBag.ExistingSubmissions as List<ShiftSubmission> ?? new List<ShiftSubmission>();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
 }
 
 <h2>@ViewData["Title"]</h2>
 
 <form asp-action="SubmitShifts" method="post" id="shiftForm">
-    @* ★ 追加: 募集期間IDを渡す *@
     <input type="hidden" name="periodId" value="@selectedPeriodId" />
-
     <input type="hidden" name="selectedShifts" id="selectedShifts" />
 
     <table class="table table-bordered text-center">
@@ -22,10 +22,10 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var date in dates)
+            @foreach (var day in shiftDays)
             {
-                var morning = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Morning);
-                var night = existingSubs.FirstOrDefault(s => s.Date.Date == date.Date && s.ShiftType == ShiftType.Night);
+                var morning = existingSubs.FirstOrDefault(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
+                var night = existingSubs.FirstOrDefault(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
 
                 var morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
                 var nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
@@ -34,14 +34,14 @@
                 bool nightSelected = (nightSymbol == "〇" || nightSymbol == "△");
 
                 <tr>
-                    <td>@date.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                    <td>@day.Date.ToLocalTime().ToString("yyyy-MM-dd")</td>
                     <td class="shift-cell @(morningSelected ? "selected" : "")"
-                        data-date="@date.ToString("yyyy-MM-dd")"
+                        data-date="@day.Date.ToString("yyyy-MM-dd")"
                         data-shift="Morning">
                         @morningSymbol
                     </td>
                     <td class="shift-cell @(nightSelected ? "selected" : "")"
-                        data-date="@date.ToString("yyyy-MM-dd")"
+                        data-date="@day.Date.ToString("yyyy-MM-dd")"
                         data-shift="Night">
                         @nightSymbol
                     </td>
@@ -63,24 +63,9 @@
             shiftCells.forEach(cell => {
                 cell.addEventListener("click", function () {
                     let currentSymbol = this.textContent.trim();
-                    let nextSymbol;
-
-                    if (currentSymbol === "×") {
-                        nextSymbol = "〇";
-                    } else if (currentSymbol === "〇") {
-                        nextSymbol = "△";
-                    } else {
-                        nextSymbol = "×";
-                    }
-
+                    let nextSymbol = currentSymbol === "×" ? "〇" : currentSymbol === "〇" ? "△" : "×";
                     this.textContent = nextSymbol;
-
-                    if (nextSymbol === "〇" || nextSymbol === "△") {
-                        this.classList.add("selected");
-                    } else {
-                        this.classList.remove("selected");
-                    }
-
+                    this.classList.toggle("selected", nextSymbol !== "×");
                     updateSelectedShifts();
                 });
             });
@@ -101,13 +86,13 @@
 }
 
 @functions {
-    string ConvertStateToSymbol(sumile.Models.ShiftState? state)
+    string ConvertStateToSymbol(ShiftState? state)
     {
         return state switch
         {
-            sumile.Models.ShiftState.Accepted => "〇",
-            sumile.Models.ShiftState.WantToGiveAway => "△",
-            sumile.Models.ShiftState.NotAccepted => "",
+            ShiftState.Accepted => "〇",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.NotAccepted => "",
             _ => "×"
         };
     }

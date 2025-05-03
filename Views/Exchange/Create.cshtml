@@ -10,7 +10,7 @@
 
 @foreach (var periodGroup in shiftsByPeriod)
 {
-    <h4>募集期間: @periodGroup.Key.StartDate.ToString("yyyy-MM-dd") ～ @periodGroup.Key.EndDate.ToString("yyyy-MM-dd")</h4>
+    <h4>募集期間: @periodGroup.Key.StartDate:yyyy-MM-dd ～ @periodGroup.Key.EndDate:yyyy-MM-dd</h4>
     <table class="table table-bordered text-center mb-5">
         <thead>
             <tr>
@@ -20,24 +20,26 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var date in periodGroup.Value.Select(s => s.Date.Date).Distinct().OrderBy(d => d))
+            @foreach (var date in periodGroup.Value.Select(s => s.ShiftDay.Date.Date).Distinct().OrderBy(d => d))
             {
-                var morning = periodGroup.Value.FirstOrDefault(s => s.Date.Date == date && s.ShiftType == ShiftType.Morning);
-                var night = periodGroup.Value.FirstOrDefault(s => s.Date.Date == date && s.ShiftType == ShiftType.Night);
+                var morning = periodGroup.Value.FirstOrDefault(s => s.ShiftDay.Date.Date == date && s.ShiftType == ShiftType.Morning);
+                var night = periodGroup.Value.FirstOrDefault(s => s.ShiftDay.Date.Date == date && s.ShiftType == ShiftType.Night);
 
                 <tr>
                     <td>@date.ToString("yyyy-MM-dd")</td>
                     <td class="shift-cell @(IsSelectable(morning) ? "selectable-shift" : "disabled")"
                         data-shift-id="@morning?.Id"
+                        data-day-id="@morning?.ShiftDayId"
+                        data-type="0"
                         data-date="@date.ToString("yyyy-MM-dd")"
-                        data-type="朝"
                         data-role="@morning?.UserShiftRole">
                         @ConvertToSymbol(morning?.ShiftStatus)
                     </td>
                     <td class="shift-cell @(IsSelectable(night) ? "selectable-shift" : "disabled")"
                         data-shift-id="@night?.Id"
+                        data-day-id="@night?.ShiftDayId"
+                        data-type="1"
                         data-date="@date.ToString("yyyy-MM-dd")"
-                        data-type="夜"
                         data-role="@night?.UserShiftRole">
                         @ConvertToSymbol(night?.ShiftStatus)
                     </td>
@@ -59,6 +61,8 @@
                 <div class="modal-body">
                     <p id="confirmText"></p>
                     <input type="hidden" name="offeredShiftSubmissionId" id="modalShiftId" />
+                    <input type="hidden" name="shiftDayId" id="modalShiftDayId" />
+                    <input type="hidden" name="shiftType" id="modalShiftType" />
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-primary">はい、出す</button>
@@ -84,13 +88,17 @@
             document.querySelectorAll(".selectable-shift").forEach(cell => {
                 cell.addEventListener("click", function () {
                     const shiftId = this.dataset.shiftId;
-                    const date = this.dataset.date;
+                    const dayId = this.dataset.dayId;
                     const type = this.dataset.type;
+                    const date = this.dataset.date;
                     const role = this.dataset.role;
 
                     document.getElementById("modalShiftId").value = shiftId;
+                    document.getElementById("modalShiftDayId").value = dayId;
+                    document.getElementById("modalShiftType").value = type;
+
                     document.getElementById("confirmText").textContent =
-                        `${date} の ${type}（${convertRole(role)}）を交換に出します。よろしいですか？`;
+                        `${date} の ${type === "0" ? "朝" : "夜"}（${convertRole(role)}）を交換に出します。よろしいですか？`;
 
                     const modal = new bootstrap.Modal(document.getElementById("confirmModal"));
                     modal.show();

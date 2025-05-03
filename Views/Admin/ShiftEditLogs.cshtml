@@ -1,4 +1,5 @@
 ﻿@model List<sumile.Models.ShiftEditLog>
+
 @{
     ViewData["Title"] = "シフト変更ログ";
     var periods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
@@ -37,7 +38,7 @@
         {
             <tr class="@(log.OldState != log.NewState ? "table-warning" : "")">
                 <td>@log.TargetUser?.Name</td>
-                <td>@log.ShiftDate.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                <td>@log.ShiftDay?.Date.ToLocalTime().ToString("yyyy-MM-dd")</td>
                 <td>@log.ShiftType</td>
                 <td>@ConvertStateToSymbol(log.OldState)</td>
                 <td>@ConvertStateToSymbol(log.NewState)</td>
@@ -47,8 +48,8 @@
         }
     </tbody>
 </table>
-<a asp-action="Index" class="btn btn-secondary">戻る</a>
 
+<a asp-action="Index" class="btn btn-secondary">戻る</a>
 
 @functions {
     string ConvertStateToSymbol(sumile.Models.ShiftState state)

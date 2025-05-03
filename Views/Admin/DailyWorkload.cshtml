@@ -3,14 +3,15 @@
     ViewData["Title"] = "枚数編集";
     var periods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new();
     var selectedPeriodId = ViewBag.SelectedPeriodId as int? ?? 0;
-    var dates = ViewBag.Dates as List<DateTime> ?? new();
-    var workloads = ViewBag.Workloads as List<DailyWorkload> ?? new(); // ← 修正
+    var shiftDays = ViewBag.ShiftDays as List<ShiftDay> ?? new();
+    var workloadMap = ViewBag.WorkloadMap as Dictionary<int, DailyWorkload> ?? new(); // ← ★辞書形式に
 }
 
 <h2>枚数編集</h2>
 
-<form method="post" asp-action="EditDailyWorkload">
+<form method="post" asp-action="SaveDailyWorkload">
     <input type="hidden" name="periodId" value="@selectedPeriodId" />
+    <input type="hidden" name="redirectTo" value="edit" />
 
     <div class="mb-3">
         <label>募集期間選択：</label>
@@ -32,13 +33,14 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var date in dates)
+            @foreach (var day in shiftDays)
             {
-                var value = workloads.FirstOrDefault(w => w.Date.Date == date.Date)?.RequiredCount ?? 0;
+                var value = workloadMap.ContainsKey(day.Id) ? workloadMap[day.Id].RequiredCount : 0;
                 <tr>
-                    <td>@date.ToString("yyyy/MM/dd (ddd)", System.Globalization.CultureInfo.GetCultureInfo("ja-JP"))</td>
+                    <td>@day.Date.ToString("yyyy/MM/dd (ddd)", System.Globalization.CultureInfo.GetCultureInfo("ja-JP"))</td>
                     <td>
-                        <input type="number" name="workloads[@date.ToString("yyyy-MM-dd")]" class="form-control" value="@value" min="0" />
+                        <input type="number" name="inputCounts[@day.Date.ToString("yyyy-MM-dd")]"
+                               class="form-control" value="@value" min="0" />
                     </td>
                 </tr>
             }

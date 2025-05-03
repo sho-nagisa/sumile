@@ -8,7 +8,7 @@ namespace sumile.Models
         [Display(Name = "名前")]
         public string Name { get; set; }
 
-        public int CustomId { get; set; } // 自動的に割り当てられるため、入力不要
+        public int CustomId { get; set; } // 参照はないが自動割当のため消したらだめ
 
         [Required]
         [DataType(DataType.Password)]

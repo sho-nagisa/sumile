@@ -80,7 +80,6 @@
                     var morningShift = submissions
                     .FirstOrDefault(s =>
                     s.UserId == user.Id
-                    && s.Date.Date == date.Date
                     && s.ShiftType == ShiftType.Morning
                     );
 
@@ -88,7 +87,6 @@
                     var nightShift = submissions
                     .FirstOrDefault(s =>
                     s.UserId == user.Id
-                    && s.Date.Date == date.Date
                     && s.ShiftType == ShiftType.Night
                     );
 

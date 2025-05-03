@@ -33,9 +33,11 @@
         {
             var offered = item.OfferedShiftSubmission;
             var accepted = item.AcceptedShiftSubmission;
-            var shiftDateStr = offered?.Date.ToString("yyyy-MM-dd") ?? "";
+
+            // ↓ ShiftDay 経由で取得（ShiftSubmission.Date は使用しない）
+            var shiftDateStr = offered?.ShiftDay?.Date.ToString("yyyy-MM-dd") ?? "";
             var shiftTypeInt = (int)(offered?.ShiftType ?? ShiftType.Morning);
-            var periodId = offered?.RecruitmentPeriodId ?? 0;
+            var periodId = offered?.ShiftDay?.RecruitmentPeriodId ?? 0;
             var targetUserRole = item.RequestedByUser?.UserShiftRole.ToString() ?? "Normal";
 
             <tr>
@@ -45,7 +47,7 @@
                     @if (offered != null)
                     {
                         <span>
-                            @($"{offered.Date:yyyy/MM/dd}（{ConvertShiftType(offered.ShiftType)}）[{ConvertRoleToLabel(offered.UserShiftRole)}]")
+                            @($"{offered.ShiftDay?.Date:yyyy/MM/dd}（{ConvertShiftType(offered.ShiftType)}）[{ConvertRoleToLabel(offered.UserShiftRole)}]")
                         </span>
                     }
                     else
@@ -58,7 +60,7 @@
                     @if (accepted != null)
                     {
                         <span>
-                            @($"{accepted.Date:yyyy/MM/dd}（{ConvertShiftType(accepted.ShiftType)}）[{ConvertRoleToLabel(accepted.UserShiftRole)}]")
+                            @($"{accepted.ShiftDay?.Date:yyyy/MM/dd}（{ConvertShiftType(accepted.ShiftType)}）[{ConvertRoleToLabel(accepted.UserShiftRole)}]")
                         </span>
                     }
                     else
@@ -128,22 +130,19 @@
 
 <script>
     async function checkExchangeCapacity(form, date, shiftType, periodId, currentUserRole, targetUserRole) {
-        // 鍵持ち同士 or 非鍵同士は即OK
         if (currentUserRole === targetUserRole) return true;
 
         try {
             const res = await fetch(`/Exchange/GetShiftStatusInfo?date=${date}&shiftType=${shiftType}&periodId=${periodId}`);
             const data = await res.json();
 
-            const redLimit = Math.floor(data.total / 2); // 赤丸の理想的な上限（例：6人中3）
+            const redLimit = Math.floor(data.total / 2);
             const redCount = data.redCount;
 
-            // 上限に達している → 黒丸になる警告
             if (targetUserRole === "KeyHolder" && redCount >= redLimit) {
                 return confirm("赤丸の上限に達しています。この交換をすると鍵持ちでも黒丸になります。続行しますか？");
             }
 
-            // 上限未満で譲ると、赤丸が補充されない危険 → 警告（但し続行可能）
             if (targetUserRole === "KeyHolder" && redCount < redLimit) {
                 return confirm(`現在この時間帯の赤丸は ${redCount} 人です（上限 ${redLimit}）。\n赤丸が不足すると運営に支障が出る可能性があります。\nそれでも交換を続けますか？`);
             }
