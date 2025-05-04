@@ -104,6 +104,17 @@ namespace sumile.Controllers
             return View();
         }
 
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RegeneratePdf(int periodId)
+        {
+            if (!await IsAdminUser()) return Unauthorized();
+
+            await _pdfService.GenerateShiftPdfAsync(periodId);
+            TempData["SuccessMessage"] = "PDFを再生成しました。";
+
+            return RedirectToAction("Index", new { periodId });
+        }
 
         [HttpGet]
         public async Task<IActionResult> ShiftEditLogs(int? periodId)

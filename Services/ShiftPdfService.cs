@@ -3,6 +3,8 @@ using sumile.Models;
 using PdfSharpCore.Drawing;
 using PdfSharpCore.Pdf;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
+using PdfSharpCore;
 
 namespace sumile.Services
 {
@@ -19,32 +21,38 @@ namespace sumile.Services
 
         public async Task GenerateShiftPdfAsync(int periodId)
         {
-            // ShiftDayとUserを含めて読み込む（RecruitmentPeriodIdはShiftDay経由で参照）
+            // 期間IDに紐づくシフト提出情報を取得、日付→シフト種別→ユーザー名の順でソート
             var submissions = await _context.ShiftSubmissions
                 .Include(s => s.User)
                 .Include(s => s.ShiftDay)
                 .Where(s => s.ShiftDay.RecruitmentPeriodId == periodId)
                 .OrderBy(s => s.ShiftDay.Date)
+                .ThenBy(s => s.ShiftType)
                 .ThenBy(s => s.User.Name)
                 .ToListAsync();
 
             var document = new PdfDocument();
             var page = document.AddPage();
-            page.Size = PdfSharpCore.PageSize.A4;
+            page.Size = PageSize.A4;
 
             var gfx = XGraphics.FromPdfPage(page);
-            var font = new XFont("Meiryo UI", 10, XFontStyle.Regular);
+            // カスタムフォントリゾルバをProgram.csで設定している前提
+            var headerFont = new XFont("NotoSansJP", 16, XFontStyle.Bold, new XPdfFontOptions(PdfFontEncoding.Unicode));
+            var regularFont = new XFont("NotoSansJP", 10, XFontStyle.Regular, new XPdfFontOptions(PdfFontEncoding.Unicode));
 
             int y = 40;
-            gfx.DrawString($"シフト表 (期間ID: {periodId})", new XFont("Meiryo UI", 16, XFontStyle.Bold), XBrushes.Black, new XPoint(40, y));
+            // ヘッダーを描画
+            gfx.DrawString($"シフト表（期間ID: {periodId}）", headerFont, XBrushes.Black, new XPoint(40, y));
             y += 30;
 
+            // 各シフトを行単位で描画
             foreach (var shift in submissions)
             {
-                var shiftInfo = $"{shift.ShiftDay.Date:yyyy/MM/dd} - {shift.User.Name} - {shift.ShiftType} - {shift.ShiftStatus}";
-                gfx.DrawString(shiftInfo, font, XBrushes.Black, new XPoint(40, y));
+                var shiftLine = $"{shift.ShiftDay.Date:yyyy/MM/dd}（{GetShiftTypeLabel(shift.ShiftType)}） - {shift.User.Name} - {GetShiftStatusLabel(shift.ShiftStatus)}";
+                gfx.DrawString(shiftLine, regularFont, XBrushes.Black, new XPoint(40, y));
                 y += 20;
 
+                // ページ下部に近づいたら改ページ
                 if (y > page.Height - 50)
                 {
                     page = document.AddPage();
@@ -53,6 +61,7 @@ namespace sumile.Services
                 }
             }
 
+            // PDF保存用フォルダ準備
             var folder = Path.Combine(_env.WebRootPath, "shift_pdfs");
             if (!Directory.Exists(folder))
                 Directory.CreateDirectory(folder);
@@ -61,5 +70,22 @@ namespace sumile.Services
             using var fs = new FileStream(filePath, FileMode.Create);
             document.Save(fs);
         }
+
+        // シフト種別を日本語ラベルに変換
+        private static string GetShiftTypeLabel(ShiftType type) => type switch
+        {
+            ShiftType.Morning => "朝",
+            ShiftType.Night => "夜",
+            _ => "？"
+        };
+
+        // シフトステータスを記号に変換
+        private static string GetShiftStatusLabel(ShiftState state) => state switch
+        {
+            ShiftState.Accepted => "〇",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.NotAccepted => "×",
+            _ => "―"
+        };
     }
 }
