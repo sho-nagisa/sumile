@@ -43,6 +43,7 @@ namespace sumile.Controllers
             HttpContext.Session.SetString("IsAdmin", isAdmin.ToString());
             return isAdmin;
         }
+        
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
         {
@@ -70,7 +71,7 @@ namespace sumile.Controllers
             var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
 
             var users = await _userManager.Users
-                .Select(u => new { u.Id, u.CustomId, u.Name })
+                .Select(u => new { u.Id, u.CustomId, u.Name, u.UserShiftRole })
                 .ToListAsync();
 
             var submissions = await _context.ShiftSubmissions
@@ -201,7 +202,6 @@ namespace sumile.Controllers
 
             return RedirectToAction(nameof(Index));
         }
-
 
         [HttpGet]
         public async Task<IActionResult> EditShifts(int? periodId)

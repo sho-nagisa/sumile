@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Identity;
 using sumile.Models;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http; // セッション用
+using Microsoft.AspNetCore.Http;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;

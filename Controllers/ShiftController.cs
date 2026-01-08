@@ -42,6 +42,10 @@ namespace sumile.Controllers
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
         {
+            var currentUser = await _userManager.GetUserAsync(User);
+            if (currentUser == null) return RedirectToAction("Login", "Account");
+
+            // ===== 募集期間 =====
             var allPeriods = await _context.RecruitmentPeriods
                 .OrderByDescending(r => r.Id)
                 .ToListAsync();
@@ -49,19 +53,62 @@ namespace sumile.Controllers
             var selectedPeriod = periodId.HasValue
                 ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value)
                 : allPeriods.FirstOrDefault();
+            ViewBag.Users = await _context.Users
+                .OrderBy(u => u.CustomId)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.CustomId,
+                    u.Name,
+                    u.UserShiftRole
+                })
+                .ToListAsync();
 
+            // ===== ShiftDay =====
             var shiftDays = selectedPeriod != null
-                ? await _context.ShiftDays.Where(d => d.RecruitmentPeriodId == selectedPeriod.Id).OrderBy(d => d.Date).ToListAsync()
+                ? await _context.ShiftDays
+                    .Where(d => d.RecruitmentPeriodId == selectedPeriod.Id)
+                    .OrderBy(d => d.Date)
+                    .ToListAsync()
                 : new List<ShiftDay>();
 
+            // ===== DailyWorkload =====
             var workloads = await _context.DailyWorkloads
                 .Where(w => shiftDays.Select(sd => sd.Id).Contains(w.ShiftDayId))
+                .Include(w => w.ShiftDay)
                 .ToListAsync();
 
-            var users = await _userManager.Users
-                .Select(u => new { u.Id, u.CustomId, u.Name })
-                .ToListAsync();
+            // ===== 前期間最終日 workload を先頭に追加（必要人数用）=====
+            if (selectedPeriod != null)
+            {
+                var prevPeriod = allPeriods
+                    .Where(p => p.Id < selectedPeriod.Id)
+                    .OrderByDescending(p => p.Id)
+                    .FirstOrDefault();
 
+                if (prevPeriod != null)
+                {
+                    var prevLastShiftDayId = await _context.ShiftDays
+                        .Where(sd => sd.RecruitmentPeriodId == prevPeriod.Id)
+                        .OrderByDescending(sd => sd.Date)
+                        .Select(sd => sd.Id)
+                        .FirstOrDefaultAsync();
+
+                    if (prevLastShiftDayId != 0)
+                    {
+                        var prevWorkload = await _context.DailyWorkloads
+                            .Include(w => w.ShiftDay)
+                            .FirstOrDefaultAsync(w => w.ShiftDayId == prevLastShiftDayId);
+
+                        if (prevWorkload != null)
+                        {
+                            workloads.Insert(0, prevWorkload);
+                        }
+                    }
+                }
+            }
+
+            // ===== Submissions =====
             var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
             var submissions = await _context.ShiftSubmissions
                 .Where(s => shiftDayIds.Contains(s.ShiftDayId))
@@ -69,15 +116,106 @@ namespace sumile.Controllers
                 .Include(s => s.ShiftDay)
                 .ToListAsync();
 
+            // ================================
+            // ① tbody基準：常に 2n 列
+            // ================================
+            var totalAcceptedList = new List<int>();
+            var keyHolderAcceptedList = new List<int>();
+
+            foreach (var day in shiftDays)
+            {
+                // 朝
+                totalAcceptedList.Add(
+                    submissions.Count(s =>
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Morning &&
+                        s.ShiftStatus == ShiftState.Accepted)
+                );
+
+                keyHolderAcceptedList.Add(
+                    submissions.Count(s =>
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Morning &&
+                        s.ShiftStatus == ShiftState.Accepted &&
+                        s.UserShiftRole == UserShiftRole.KeyHolder)
+                );
+
+                // 夜
+                totalAcceptedList.Add(
+                    submissions.Count(s =>
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Night &&
+                        s.ShiftStatus == ShiftState.Accepted)
+                );
+
+                keyHolderAcceptedList.Add(
+                    submissions.Count(s =>
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Night &&
+                        s.ShiftStatus == ShiftState.Accepted &&
+                        s.UserShiftRole == UserShiftRole.KeyHolder)
+                );
+            }
+
+            // ==========================================
+            // ② 必要人数：1 + 2(n-1) + 1 列（専用）
+            // ==========================================
+            var requiredList = new List<int>();
+
+            for (int i = 0; i < workloads.Count; i++)
+            {
+                var w = workloads[i];
+                var day = w.ShiftDay;
+
+                bool isPrevPeriodDay =
+                    day.RecruitmentPeriodId != selectedPeriod.Id;
+
+                bool isLastDayOfCurrent =
+                    day.RecruitmentPeriodId == selectedPeriod.Id &&
+                    day.Date == shiftDays.Last().Date;
+
+                if (isPrevPeriodDay || isLastDayOfCurrent)
+                {
+                    // 1列
+                    requiredList.Add(w.RequiredWorkers);
+                }
+                else
+                {
+                    // 2列（朝夜）
+                    requiredList.Add(w.RequiredWorkers);
+                    requiredList.Add(w.RequiredWorkers);
+                }
+            }
+
+            // ==========================================
+            // ③ 残り人数（意味ずれOKで index 対応）
+            // ==========================================
+            var remainingWorkersList = new List<int>();
+
+            for (int i = 0; i < requiredList.Count; i++)
+            {
+                int accepted = (i < totalAcceptedList.Count)
+                    ? totalAcceptedList[i]
+                    : 0;
+
+                remainingWorkersList.Add(requiredList[i] - accepted);
+            }
+
+            // ===== ViewBag =====
+            ViewBag.Dates = shiftDays;
             ViewBag.Workloads = workloads;
-            ViewBag.Users = users;
-            ViewBag.Dates = shiftDays.Select(d => d.Date).ToList();
             ViewBag.Submissions = submissions;
+
+            ViewBag.TotalAcceptedList = totalAcceptedList;
+            ViewBag.KeyHolderAcceptedList = keyHolderAcceptedList;
+            ViewBag.RemainingWorkersList = remainingWorkersList;
+
             ViewBag.RecruitmentPeriods = allPeriods;
             ViewBag.SelectedPeriodId = selectedPeriod?.Id;
 
             return View();
         }
+
 
         [HttpGet]
         public async Task<IActionResult> Submission(int? periodId)
@@ -191,7 +329,7 @@ namespace sumile.Controllers
 
             return RedirectToAction("Submission", new { periodId });
         }
-
+        // シフト提出時の提出済みシフト取得
         [HttpGet]
         public async Task<IActionResult> SubmissioList(int? periodId)
         {
@@ -288,6 +426,34 @@ namespace sumile.Controllers
         public IActionResult Create()
         {
             return RedirectToAction(nameof(Submission));
+        }
+
+        // Temporary debug endpoint (allow anonymous) to inspect shiftdays/submissions counts
+        [AllowAnonymous]
+        [HttpGet]
+        public async Task<IActionResult> DebugCounts(int? periodId)
+        {
+            var allPeriods = await _context.RecruitmentPeriods.OrderByDescending(r => r.Id).ToListAsync();
+            var selectedPeriod = periodId.HasValue
+                ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value)
+                : allPeriods.FirstOrDefault();
+
+            var shiftDays = selectedPeriod != null
+                ? await _context.ShiftDays.Where(d => d.RecruitmentPeriodId == selectedPeriod.Id).OrderBy(d => d.Date).ToListAsync()
+                : new List<ShiftDay>();
+
+            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
+            var submissions = await _context.ShiftSubmissions
+                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
+                .ToListAsync();
+
+            return Json(new
+            {
+                SelectedPeriodId = selectedPeriod?.Id,
+                ShiftDaysCount = shiftDays.Count,
+                ShiftDayIds = shiftDays.Select(d => d.Id).ToList(),
+                SubmissionsCount = submissions.Count
+            });
         }
     }
 

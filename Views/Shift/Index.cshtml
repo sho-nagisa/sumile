@@ -3,20 +3,18 @@
 
 @{
     ViewData["Title"] = "シフト一覧";
-
+    var workloads = (ViewBag.Workloads as IEnumerable<DailyWorkload>)?.ToList()
+                    ?? new List<DailyWorkload>();
+    var currentUserId = ViewBag.CurrentUserId as string;
     var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
-    var shiftDays = ViewBag.Dates as List<ShiftDay>; // 変更する場合は List<ShiftDay> に
-    var submissions = ViewBag.Submissions as List<ShiftSubmission>;
-    var users = ViewBag.Users as List<dynamic>;
-    var workloads = ViewBag.Workloads as List<DailyWorkload>;
-}
-
-@if (TempData["SuccessMessage"] != null)
-{
-    <div class="alert alert-success">
-        @TempData["SuccessMessage"]
-    </div>
+    var users = (ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>()).OrderBy(u => u.CustomId);
+    var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
+    var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
+    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();
+    var totalAcceptedList = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
+    var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
+    var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -31,17 +29,15 @@
     <a href="@Url.Action("Index", "Exchange")" class="btn btn-info">シフト交換</a>
 </div>
 
-<div style="margin-bottom: 1rem;">
+<!-- 期間選択 -->
+<div class="mb-3">
     <label for="periodSelect">表示期間：</label>
     <select id="periodSelect" class="form-select" style="width:auto; display:inline;">
-        @if (recruitmentPeriods != null)
+        @foreach (var rp in recruitmentPeriods)
         {
-            foreach (var rp in recruitmentPeriods)
-            {
-                <option value="@rp.Id" selected="@(rp.Id == selectedPeriodId)">
-                    @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
-                </option>
-            }
+            <option value="@rp.Id" selected="@(rp.Id == selectedPeriodId)">
+                @rp.StartDate.ToString("yyyy/MM/dd") ～ @rp.EndDate.ToString("yyyy/MM/dd")
+            </option>
         }
     </select>
 </div>
@@ -49,15 +45,135 @@
 <script>
     document.getElementById('periodSelect')?.addEventListener('change', function () {
         var pid = this.value;
-        window.location.href = '@Url.Action("Index", "Shift")' + '?periodId=' + encodeURIComponent(pid);
+        window.location.href = '@Url.Action("Index", "Shift")?periodId=' + pid;
     });
 </script>
+<style>
+    .current-user-row {
+        background-color: #f3e8ff; /* 薄い紫 */
+    }
+</style>
 
-@if (selectedPeriodId.HasValue)
-{
-    <div class="mt-4">
-        <h4>シフト表（PDF）</h4>
-        <iframe src="@($"/shift_pdfs/shift_{selectedPeriodId}.pdf?{DateTime.Now.Ticks}")"
-                width="100%" height="800px" style="border:1px solid #ccc;"></iframe>
-    </div>
+<table class="table table-bordered text-center">
+    <thead>
+        <tr>
+            <th rowspan="4">ユーザー</th>
+            <th rowspan="4">鍵持ちOK</th>
+            @foreach (var day in shiftDays)
+            {
+                <th colspan="2">@day.Date.ToString("M/d")</th>
+            }
+        </tr>
+        <tr>
+            @foreach (var day in shiftDays)
+            {
+                <th colspan="2">@day.Date.ToString("ddd", new CultureInfo("ja-JP"))</th>
+            }
+        </tr>
+        <tr>
+            @foreach (var day in shiftDays)
+            {
+                <th>上</th>
+                <th>敷</th>
+            }
+        </tr>
+        <tr>
+            @for (int i = 0; i < workloads.Count; i++)
+            {
+                var w = workloads[i];
+                bool isSingleColumn = (i == 0 || i == workloads.Count - 1);
+
+                if (isSingleColumn)
+                {
+                    <td>
+                        @w.RequiredCount
+                    </td>
+                }
+                else
+                {
+                    <td colspan="2">@w.RequiredCount</td>
+                }
+            }
+        </tr>
+
+    </thead>
+    <tbody>
+        @foreach (var user in users)
+        {
+            <tr>
+                <td>@user.CustomId (@user.Name)</td>
+                @{
+                    var hasKeyHolder = user.UserShiftRole == UserShiftRole.KeyHolder;
+                }
+                <td>@(hasKeyHolder ? "★" : "")</td>
+
+                @foreach (var day in shiftDays)
+                {
+                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
+                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
+
+                    var keyMorning = $"{user.Id}_{day.Id}_0";
+                    var keyNight = $"{user.Id}_{day.Id}_1";
+
+                    string morningClass = diffKeys.Contains(keyMorning) ? "highlight-cell" : "";
+                    string nightClass = diffKeys.Contains(keyNight) ? "highlight-cell" : "";
+
+                    string morningSymbol = ConvertStateToColoredSymbol(morning?.ShiftStatus, morning?.UserShiftRole);
+                    string nightSymbol = ConvertStateToColoredSymbol(night?.ShiftStatus, night?.UserShiftRole);
+
+                    <td class="@morningClass">@Html.Raw(morningSymbol)</td>
+                    <td class="@nightClass">@Html.Raw(nightSymbol)</td>
+                }
+            </tr>
+        }
+    </tbody>
+
+    <tfoot>
+        <tr>
+            <td colspan="2">〇の数</td>
+            @foreach (var v in ViewBag.TotalAcceptedList as List<int>)
+            {
+                <td>@v</td>
+            }
+        </tr>
+
+        <tr>
+            <td colspan="2">赤丸</td>
+            @foreach (var v in ViewBag.KeyHolderAcceptedList as List<int>)
+            {
+                <td>@v</td>
+            }
+        </tr>
+
+        <tr>
+            <td colspan="2">残り</td>
+            @foreach (var v in ViewBag.RemainingWorkersList as List<int>)
+            {
+                <td>@v</td>
+            }
+        </tr>
+    </tfoot>
+</table>
+
+@functions {
+    string ConvertStateToColoredSymbol(ShiftState? state, UserShiftRole? role)
+    {
+        string baseSymbol = state switch
+        {
+            ShiftState.Accepted => "〇",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.NotAccepted => "",
+            _ => "×"
+        };
+
+        if (baseSymbol != "〇") return baseSymbol;
+
+        return role switch
+        {
+            UserShiftRole.KeyHolder => "<span style='color:red;'>〇</span>",
+            UserShiftRole.Normal => "<span style='color:black;'>〇</span>",
+            UserShiftRole.New => "<span style='color:gray;'>〇</span>",
+            _ => baseSymbol
+        };
+    }
 }

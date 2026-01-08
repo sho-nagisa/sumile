@@ -106,7 +106,7 @@
             <tr>
                 <td>@user.CustomId (@user.Name)</td>
                 @{
-                    var hasKeyHolder = submissions.Any(s => s.UserId == user.Id && s.UserShiftRole == UserShiftRole.KeyHolder);
+                    var hasKeyHolder = user.UserShiftRole == UserShiftRole.KeyHolder;
                 }
                 <td>@(hasKeyHolder ? "★" : "")</td>
 
