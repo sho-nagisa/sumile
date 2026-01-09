@@ -10,7 +10,7 @@
     var users = (ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>()).OrderBy(u => u.CustomId);
     var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
     var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
-    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();
+    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();// 変更点ハイライト用（現状は未使用で後付けの表示用）
     var totalAcceptedList = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
     var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
     var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();

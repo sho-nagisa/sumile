@@ -19,15 +19,18 @@ namespace sumile.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ApplicationDbContext _context;
         private readonly ShiftPdfService _pdfService;
+        private readonly ShiftTableService _shiftTableService;
 
         public AdminController(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
-        ShiftPdfService pdfService)
+        ShiftPdfService pdfService,
+        ShiftTableService shiftTableService)
         {
             _context = context;
             _userManager = userManager;
             _pdfService = pdfService;
+            _shiftTableService = shiftTableService;
         }
 
         private async Task<bool> IsAdminUser()
@@ -62,24 +65,21 @@ namespace sumile.Controllers
                 TempData["Error"] = "募集期間が選択されていません。";
                 return RedirectToAction("SetRecruitmentPeriod");
             }
-
-            var shiftDays = await _context.ShiftDays
-                .Where(sd => sd.RecruitmentPeriodId == selectedPeriod.Id)
-                .OrderBy(sd => sd.Date)
+            ViewBag.Users = await _context.Users
+                .OrderBy(u => u.CustomId)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.CustomId,
+                    u.Name,
+                    u.UserShiftRole
+                })
                 .ToListAsync();
 
-            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
 
-            var users = await _userManager.Users
-                .Select(u => new { u.Id, u.CustomId, u.Name, u.UserShiftRole })
-                .ToListAsync();
-
-            var submissions = await _context.ShiftSubmissions
-                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
-                .Include(s => s.User)
-                .Include(s => s.ShiftDay)
-                .ToListAsync();
-
+            // ===== ★ ここから Service 利用 =====
+            var table = await _shiftTableService.BuildAsync(periodId);
+            var shiftDayIds = table.ShiftDays.Select(d => d.Id).ToList();
             var diffLogs = await _context.ShiftEditLogs
                 .Where(log => shiftDayIds.Contains(log.ShiftDayId))
                 .Select(log => new
@@ -94,11 +94,15 @@ namespace sumile.Controllers
             var diffKeySet = new HashSet<string>(
                 diffLogs.Select(k => $"{k.TargetUserId}_{k.ShiftDayId}_{(int)k.ShiftType}")
             );
+            // =====service からのデータ=====
+            ViewBag.Dates = table.ShiftDays;
+            ViewBag.Submissions = table.Submissions;
+            ViewBag.Workloads = table.Workloads;
+            ViewBag.TotalAcceptedList = table.TotalAcceptedList;
+            ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
+            ViewBag.RemainingWorkersList = table.RemainingWorkersList;
 
-            ViewBag.DiffKeys = diffKeySet;
-            ViewBag.Users = users;
-            ViewBag.Dates = shiftDays;
-            ViewBag.Submissions = submissions;
+            // ===== その他 View 用データ =====
             ViewBag.RecruitmentPeriods = allPeriods;
             ViewBag.SelectedPeriodId = selectedPeriod?.Id;
 

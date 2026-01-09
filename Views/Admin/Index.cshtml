@@ -3,13 +3,17 @@
 
 @{
     ViewData["Title"] = "シフト一覧(管理者用)";
-
+    var workloads = (ViewBag.Workloads as IEnumerable<DailyWorkload>)?.ToList()
+                    ?? new List<DailyWorkload>();
     var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
     var users = (ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>()).OrderBy(u => u.CustomId);
     var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
     var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
-    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();
+    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();// 変更点ハイライト用（現状は未使用で後付けの表示用）
+    var totalAcceptedList = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
+    var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
+    var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -79,8 +83,8 @@
 <table class="table table-bordered text-center">
     <thead>
         <tr>
-            <th rowspan="3">ユーザー</th>
-            <th rowspan="3">鍵持ちOK</th>
+            <th rowspan="4">ユーザー</th>
+            <th rowspan="4">鍵持ちOK</th>
             @foreach (var day in shiftDays)
             {
                 <th colspan="2">@day.Date.ToString("M/d")</th>
@@ -99,21 +103,50 @@
                 <th>敷</th>
             }
         </tr>
+        <tr>
+            @for (int i = 0; i < workloads.Count; i++)
+            {
+                var w = workloads[i];
+                bool isSingleColumn = (i == 0 || i == workloads.Count - 1);
+
+                if (isSingleColumn)
+                {
+                    <td>
+                        @w.RequiredCount
+                    </td>
+                }
+                else
+                {
+                    <td colspan="2">@w.RequiredCount</td>
+                }
+            }
+        </tr>
+
     </thead>
     <tbody>
         @foreach (var user in users)
         {
+            bool isCurrentUser =
+                ViewBag.CurrentUserCustomId != null &&
+                user.CustomId.ToString() == ViewBag.CurrentUserCustomId;
             <tr>
-                <td>@user.CustomId (@user.Name)</td>
+                <td>@user.Name</td>
                 @{
-                    var hasKeyHolder = submissions.Any(s => s.UserId == user.Id && s.UserShiftRole == UserShiftRole.KeyHolder);
+                    var hasKeyHolder = user.UserShiftRole == UserShiftRole.KeyHolder;
                 }
                 <td>@(hasKeyHolder ? "★" : "")</td>
 
                 @foreach (var day in shiftDays)
                 {
-                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
-                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
+                    var morning = submissions.FirstOrDefault(s =>
+                        s.UserId == user.Id &&
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Morning);
+
+                    var night = submissions.FirstOrDefault(s =>
+                        s.UserId == user.Id &&
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Night);
 
                     var keyMorning = $"{user.Id}_{day.Id}_0";
                     var keyNight = $"{user.Id}_{day.Id}_1";
@@ -129,28 +162,31 @@
                 }
             </tr>
         }
+
     </tbody>
+
     <tfoot>
         <tr>
-            <th colspan="2">全体の〇数</th>
-            @foreach (var day in shiftDays)
+            <td colspan="2">〇の数</td>
+            @foreach (var v in ViewBag.TotalAcceptedList as List<int>)
             {
-                var morningCount = submissions.Count(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted);
-                var nightCount = submissions.Count(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted);
-
-                <td>@morningCount</td>
-                <td>@nightCount</td>
+                <td>@v</td>
             }
         </tr>
-        <tr>
-            <th colspan="2">赤丸（鍵持ち）</th>
-            @foreach (var day in shiftDays)
-            {
-                var morningCount = submissions.Count(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning && s.ShiftStatus == ShiftState.Accepted && s.UserShiftRole == UserShiftRole.KeyHolder);
-                var nightCount = submissions.Count(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night && s.ShiftStatus == ShiftState.Accepted && s.UserShiftRole == UserShiftRole.KeyHolder);
 
-                <td>@morningCount</td>
-                <td>@nightCount</td>
+        <tr>
+            <td colspan="2">赤丸</td>
+            @foreach (var v in ViewBag.KeyHolderAcceptedList as List<int>)
+            {
+                <td>@v</td>
+            }
+        </tr>
+
+        <tr>
+            <td colspan="2">残り</td>
+            @foreach (var v in ViewBag.RemainingWorkersList as List<int>)
+            {
+                <td>@v</td>
             }
         </tr>
     </tfoot>
