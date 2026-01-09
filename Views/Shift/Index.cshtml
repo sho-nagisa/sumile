@@ -5,7 +5,6 @@
     ViewData["Title"] = "シフト一覧";
     var workloads = (ViewBag.Workloads as IEnumerable<DailyWorkload>)?.ToList()
                     ?? new List<DailyWorkload>();
-    var currentUserId = ViewBag.CurrentUserId as string;
     var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
     var users = (ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>()).OrderBy(u => u.CustomId);
@@ -100,8 +99,11 @@
     <tbody>
         @foreach (var user in users)
         {
-            <tr>
-                <td>@user.CustomId (@user.Name)</td>
+            bool isCurrentUser =
+                ViewBag.CurrentUserCustomId != null &&
+                user.CustomId.ToString() == ViewBag.CurrentUserCustomId;
+            <tr class="@(isCurrentUser ? "current-user-row" : "")">
+                <td>@user.Name</td>
                 @{
                     var hasKeyHolder = user.UserShiftRole == UserShiftRole.KeyHolder;
                 }
@@ -109,8 +111,15 @@
 
                 @foreach (var day in shiftDays)
                 {
-                    var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
-                    var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
+                    var morning = submissions.FirstOrDefault(s =>
+                        s.UserId == user.Id &&
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Morning);
+
+                    var night = submissions.FirstOrDefault(s =>
+                        s.UserId == user.Id &&
+                        s.ShiftDayId == day.Id &&
+                        s.ShiftType == ShiftType.Night);
 
                     var keyMorning = $"{user.Id}_{day.Id}_0";
                     var keyNight = $"{user.Id}_{day.Id}_1";
@@ -126,6 +135,7 @@
                 }
             </tr>
         }
+
     </tbody>
 
     <tfoot>

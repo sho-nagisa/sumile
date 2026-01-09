@@ -1,5 +1,10 @@
-﻿public class ShiftSubmissionViewModel
-{
-    public string Date { get; set; }
-    public string ShiftType { get; set; }
+﻿
+namespace sumile.Models
+{   
+    public class ShiftSubmissionViewModel
+    {
+        public string Date { get; set; }
+        public ShiftType ShiftType { get; set; }
+        public string ShiftSymbol { get; set; }
+    }
 }

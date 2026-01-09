@@ -13,18 +13,18 @@ using sumile.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- ŠÂ‹«•Ï”‚ğ `.env` ‚©‚ç“Ç‚İ‚Şiƒ[ƒJƒ‹ŠJ”­—pj ---
+// --- ï¿½Â‹ï¿½ï¿½Ïï¿½ï¿½ï¿½ `.env` ï¿½ï¿½ï¿½ï¿½Ç‚İï¿½ï¿½Şiï¿½ï¿½ï¿½[ï¿½Jï¿½ï¿½ï¿½Jï¿½ï¿½ï¿½pï¿½j ---
 Env.Load();
 
-// ŠÂ‹«•Ï” `DB_CONNECTION_STRING` ‚ğæ“¾
+// ï¿½Â‹ï¿½ï¿½Ïï¿½ `DB_CONNECTION_STRING` ï¿½ï¿½ï¿½æ“¾
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 if (string.IsNullOrEmpty(connectionString))
 {
-    throw new InvalidOperationException("DB_CONNECTION_STRING ŠÂ‹«•Ï”‚ªİ’è‚³‚ê‚Ä‚¢‚Ü‚¹‚ñB");
+    throw new InvalidOperationException("DB_CONNECTION_STRING ï¿½Â‹ï¿½ï¿½Ïï¿½ï¿½ï¿½ï¿½İ’è‚³ï¿½ï¿½Ä‚ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½B");
 }
 builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 
-// --- ƒT[ƒrƒX“o˜^ ---
+// --- ï¿½Tï¿½[ï¿½rï¿½Xï¿½oï¿½^ ---
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -43,7 +43,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
-// ƒZƒbƒVƒ‡ƒ“İ’è
+// ï¿½Zï¿½bï¿½Vï¿½ï¿½ï¿½ï¿½ï¿½İ’ï¿½
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(30);
@@ -56,13 +56,14 @@ builder.Services.AddSession(options =>
 builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<ShiftPdfService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<ShiftTableService>();
 
-// ƒJƒXƒ^ƒ€ƒtƒHƒ“ƒgƒŠƒ]ƒ‹ƒo“o˜^
+// ï¿½Jï¿½Xï¿½^ï¿½ï¿½ï¿½tï¿½Hï¿½ï¿½ï¿½gï¿½ï¿½ï¿½]ï¿½ï¿½ï¿½oï¿½oï¿½^
 GlobalFontSettings.FontResolver = new CustomFontResolver();
 
 var app = builder.Build();
 
-// --- HTTP ƒpƒCƒvƒ‰ƒCƒ“İ’è ---
+// --- HTTP ï¿½pï¿½Cï¿½vï¿½ï¿½ï¿½Cï¿½ï¿½ï¿½İ’ï¿½ ---
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -73,7 +74,7 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
-// ƒZƒLƒ…ƒŠƒeƒBƒwƒbƒ_
+// ï¿½Zï¿½Lï¿½ï¿½ï¿½ï¿½ï¿½eï¿½Bï¿½wï¿½bï¿½_
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
