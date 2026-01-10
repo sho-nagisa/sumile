@@ -1,7 +1,7 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
 
-namespace sumile.Models
+namespace sumile.ViewModels
 {
     public class RecruitmentPeriodViewModel
     {

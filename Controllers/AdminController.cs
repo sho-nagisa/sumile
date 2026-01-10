@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using sumile.Data;
 using sumile.Models;
+using sumile.ViewModels;
 using sumile.Services;
 using System;
 using System.Collections.Generic;
