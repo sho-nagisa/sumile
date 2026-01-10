@@ -144,7 +144,6 @@ namespace sumile.Controllers
             return View(logs);
         }
 
-
         [HttpGet]
         public async Task<IActionResult> SetRecruitmentPeriod()
         {
