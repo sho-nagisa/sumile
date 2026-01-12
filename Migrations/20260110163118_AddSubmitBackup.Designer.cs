@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using sumile.Data;
@@ -11,9 +12,11 @@ using sumile.Data;
 namespace sumile.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260110163118_AddSubmitBackup")]
+    partial class AddSubmitBackup
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -354,7 +357,7 @@ namespace sumile.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RecruitmentPeriodId", "Id");
+                    b.HasIndex("RecruitmentPeriodId");
 
                     b.ToTable("ShiftDays");
                 });
@@ -527,8 +530,6 @@ namespace sumile.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("RecruitmentPeriodId", "ShiftDayId");
 
                     b.ToTable("SubmitBackups");
                 });

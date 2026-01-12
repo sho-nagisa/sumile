@@ -57,6 +57,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<ShiftPdfService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<ShiftTableService>();
+builder.Services.AddScoped<ShiftStatusDisplayService>();
 
 // �J�X�^���t�H���g���]���o�o�^
 GlobalFontSettings.FontResolver = new CustomFontResolver();

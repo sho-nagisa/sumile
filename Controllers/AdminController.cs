@@ -11,7 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-
+///※１：確定版
 namespace sumile.Controllers
 {
     [Authorize]
@@ -145,7 +145,7 @@ namespace sumile.Controllers
             return View(logs);
         }
 
-        [HttpGet]
+        [HttpGet]///※１
         public async Task<IActionResult> SetRecruitmentPeriod()
         {
             if (!await IsAdminUser()) return Unauthorized();
@@ -168,7 +168,7 @@ namespace sumile.Controllers
             return View(model);
         }
 
-        [HttpPost]
+        [HttpPost]///※１
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SetRecruitmentPeriod(RecruitmentPeriodViewModel model)
         {
@@ -210,51 +210,66 @@ namespace sumile.Controllers
         [HttpGet]
         public async Task<IActionResult> EditShifts(int? periodId)
         {
-            if (!await IsAdminUser()) return Unauthorized();
+            if (!await IsAdminUser())
+                return Unauthorized();
 
+            // ===== 募集期間一覧 =====
             var allPeriods = await _context.RecruitmentPeriods
                 .OrderByDescending(r => r.Id)
                 .ToListAsync();
 
+            // ===== 選択中の期間 =====
             var selectedPeriod = periodId.HasValue
-                ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value)
+                ? allPeriods.FirstOrDefault(p => p.Id == periodId.Value)
                 : allPeriods.FirstOrDefault();
 
-            var shiftDays = selectedPeriod != null
-                ? await _context.ShiftDays
-                    .Where(d => d.RecruitmentPeriodId == selectedPeriod.Id)
-                    .OrderBy(d => d.Date)
-                    .ToListAsync()
-                : new List<ShiftDay>();
+            if (selectedPeriod == null)
+            {
+                TempData["Error"] = "募集期間が見つかりませんでした。";
+                return RedirectToAction(nameof(Index));
+            }
 
-            var users = await _userManager.Users
-                .Select(u => new { u.Id, u.CustomId, u.Name })
+            // ===== ★ ShiftTableService 利用（表示ロジック集約） =====
+            var table = await _shiftTableService.BuildAsync(selectedPeriod.Id);
+
+            // ===== 初回状態（SubmitBackup） =====
+            var backups = await _context.SubmitBackups
+                .Where(b => b.RecruitmentPeriodId == selectedPeriod.Id)
                 .ToListAsync();
 
-            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
-
-            var submissions = await _context.ShiftSubmissions
-                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
-                .Include(s => s.User)
-                .Include(s => s.ShiftDay)
+            // ===== ユーザー一覧（星表示用に UserShiftRole を含める） =====
+            ViewBag.Users = await _context.Users
+                .OrderBy(u => u.CustomId)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.CustomId,
+                    u.Name,
+                    u.UserShiftRole
+                })
                 .ToListAsync();
 
-            var originalLogs = await _context.ShiftEditLogs
-                .Where(l => shiftDayIds.Contains(l.ShiftDayId))
-                .Include(l => l.ShiftDay)
-                .GroupBy(l => new { l.TargetUserId, l.ShiftDayId, l.ShiftType })
-                .Select(g => g.OrderBy(l => l.EditDate).FirstOrDefault())
-                .ToListAsync();
+            // ===== View に渡す（表描画用） =====
+            ViewBag.Dates                = table.ShiftDays;
+            ViewBag.Submissions           = table.Submissions;
+            ViewBag.Workloads             = table.Workloads;
 
-            ViewBag.Users = users;
-            ViewBag.Dates = shiftDays;
-            ViewBag.Submissions = submissions;
-            ViewBag.RecruitmentPeriods = allPeriods;
-            ViewBag.SelectedPeriodId = selectedPeriod?.Id;
-            ViewBag.OriginalLogs = originalLogs;
+            // 集計（Index と同一ロジック）
+            ViewBag.TotalAcceptedList     = table.TotalAcceptedList;
+            ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
+            ViewBag.RemainingWorkersList  = table.RemainingWorkersList;
+
+            // 初回状態（差分比較用・将来拡張）
+            ViewBag.Backups               = backups;
+
+            // 募集期間情報
+            ViewBag.RecruitmentPeriods    = allPeriods;
+            ViewBag.SelectedPeriodId      = selectedPeriod.Id;
 
             return View();
         }
+
+
 
         [HttpPost]
         public async Task<IActionResult> UpdateShifts([FromBody] List<ShiftUpdateModel> shiftUpdates, [FromQuery] int periodId)
@@ -291,9 +306,11 @@ namespace sumile.Controllers
                     {
                         "〇" => ShiftState.Accepted,
                         "△" => ShiftState.WantToGiveAway,
-                        "" => ShiftState.NotAccepted,
-                        _ => ShiftState.None
+                        "🔴" => ShiftState.KeyHolder,
+                        ""  => ShiftState.NotAccepted,
+                        _   => ShiftState.None
                     };
+
 
                     ShiftType shiftType = (ShiftType)shift.ShiftType;
 
@@ -385,16 +402,56 @@ namespace sumile.Controllers
         }
 
 
-        [HttpPost]
+       [HttpPost]
         public async Task<IActionResult> ToggleSubmissionStatus(int id)
         {
             if (!await IsAdminUser()) return Unauthorized();
+
             var period = await _context.RecruitmentPeriods.FindAsync(id);
             if (period == null)
             {
                 return NotFound();
             }
 
+            // ===== 締切にする瞬間のみバックアップ =====
+            if (period.IsOpen)
+            {
+                // 対象期間の ShiftDay
+                var shiftDayIds = await _context.ShiftDays
+                    .Where(d => d.RecruitmentPeriodId == id)
+                    .Select(d => d.Id)
+                    .ToListAsync();
+
+                // ① 既存バックアップを削除（上書き仕様）
+                var existingBackups = await _context.SubmitBackups
+                    .Where(b => b.RecruitmentPeriodId == id)
+                    .ToListAsync();
+
+                if (existingBackups.Any())
+                {
+                    _context.SubmitBackups.RemoveRange(existingBackups);
+                }
+
+                // ② 現在の提出済みシフトを取得
+                var submissions = await _context.ShiftSubmissions
+                    .Where(s => shiftDayIds.Contains(s.ShiftDayId))
+                    .ToListAsync();
+
+                // ③ Backup 作成
+                var backups = submissions.Select(s => new SubmitBackup
+                {
+                    RecruitmentPeriodId = id,
+                    UserId = s.UserId,
+                    ShiftDayId = s.ShiftDayId,
+                    ShiftType = s.ShiftType,
+                    ShiftStatus = s.ShiftStatus,
+                    BackedUpAt = DateTime.UtcNow
+                }).ToList();
+
+                _context.SubmitBackups.AddRange(backups);
+            }
+
+            // ===== 募集状態トグル =====
             period.IsOpen = !period.IsOpen;
             _context.RecruitmentPeriods.Update(period);
             await _context.SaveChangesAsync();
@@ -413,7 +470,7 @@ namespace sumile.Controllers
             return View(periods);
         }
 
-        [HttpGet]
+        [HttpGet]///※１
         public async Task<IActionResult> ViewDailyWorkload(int? periodId)
         {
             if (!await IsAdminUser()) return Unauthorized();
@@ -445,7 +502,7 @@ namespace sumile.Controllers
             return View("DailyWorkload", workloads);
         }
 
-        [HttpGet]
+        [HttpGet]///※１
         public async Task<IActionResult> EditDailyWorkload(int? periodId)
         {
             if (!await IsAdminUser()) return Unauthorized();
@@ -481,7 +538,7 @@ namespace sumile.Controllers
             return View("DailyWorkload");
         }
 
-        [HttpPost]
+        [HttpPost]///※１
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SaveDailyWorkload(int periodId, Dictionary<string, int> inputCounts, string redirectTo)
         {

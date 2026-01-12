@@ -1,194 +1,262 @@
-﻿@{
+﻿@using sumile.Models
+@using System.Globalization
+
+@{
     ViewData["Title"] = "シフト編集";
+
     var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
     var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
-    var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission> ?? new List<sumile.Models.ShiftSubmission>();
-    var originalLogs = ViewBag.OriginalLogs as List<sumile.Models.ShiftEditLog> ?? new List<sumile.Models.ShiftEditLog>();
+    var submissions = ViewBag.Submissions as List<ShiftSubmission> ?? new List<ShiftSubmission>();
+    var backups = ViewBag.Backups as List<SubmitBackup> ?? new List<SubmitBackup>();
+
+    var workloads = ViewBag.Workloads as List<DailyWorkload> ?? new List<DailyWorkload>();
+    var totalAccepted = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
+    var keyAccepted = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
+    var remaining = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
+
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
 }
 
 <h2>@ViewData["Title"]</h2>
 
 <form method="get" asp-action="EditShifts">
-    <select name="periodId" onchange="this.form.submit()" class="form-select" style="width:auto; display:inline;">
-        @foreach (var rec in ViewBag.RecruitmentPeriods as IEnumerable<sumile.Models.RecruitmentPeriod>)
+    <select name="periodId" class="form-select w-auto d-inline">
+        @foreach (var p in recruitmentPeriods)
         {
-            <option value="@rec.Id" selected="@(rec.Id == selectedPeriodId)">
-                @rec.StartDate.ToString("yyyy-MM-dd") - @rec.EndDate.ToString("yyyy-MM-dd")
+            <option value="@p.Id" selected="@(p.Id == selectedPeriodId)">
+                @p.StartDate.ToString("yyyy/MM/dd") ～ @p.EndDate.ToString("MM/dd")
             </option>
         }
     </select>
-    <input type="submit" value="切り替え" class="btn btn-secondary" />
+    <button type="submit" class="btn btn-secondary ms-2">表示</button>
 </form>
 
 <hr />
 
-<form method="post" id="updateForm">
-    @Html.AntiForgeryToken()
-    <input type="hidden" id="selectedPeriodId" value="@selectedPeriodId" />
-
-    <table class="table table-bordered text-center">
-        <thead>
-            <tr>
-                <th rowspan="3">ユーザー</th>
-                @foreach (var day in shiftDays)
-                {
-                    <th colspan="2">@day.Date.ToString("M月d日")</th>
-                }
-            </tr>
-            <tr>
-                @foreach (var day in shiftDays)
-                {
-                    <th colspan="2">(@day.Date.ToString("ddd"))</th>
-                }
-            </tr>
-            <tr>
-                @foreach (var _ in shiftDays)
-                {
-                    <th>朝</th>
-                    <th>夜</th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var user in users)
+<table class="table table-bordered table-sm text-center align-middle">
+    <thead>
+        <tr>
+            <th rowspan="4">ID</th>
+            <th rowspan="4">名前</th>
+            @foreach (var day in shiftDays)
             {
-                <tr>
-                    <td>@user.CustomId (@user.Name)</td>
-                    @foreach (var day in shiftDays)
+                <th colspan="2">@day.Date.ToString("M/d")</th>
+            }
+        </tr>
+        <tr>
+            @foreach (var day in shiftDays)
+            {
+                <th colspan="2">@day.Date.ToString("ddd", new CultureInfo("ja-JP"))</th>
+            }
+        </tr>
+        <tr>
+            @foreach (var day in shiftDays)
+            {
+                <th>上</th>
+                <th>敷</th>
+            }
+        </tr>
+        <tr>
+            @for (int i = 0; i < workloads.Count; i++)
+            {
+                var w = workloads[i];
+                bool isSingle = (i == 0 || i == workloads.Count - 1);
+                if (isSingle)
+                {
+                    <td>@w.RequiredCount</td>
+                }
+                else
+                {
+                    <td colspan="2">@w.RequiredCount</td>
+                }
+            }
+        </tr>
+    </thead>
+
+    <tbody>
+        @foreach (var user in users)
+        {
+            <tr>
+                <td>@user.CustomId</td>
+                <td>
+                    @user.Name
+                    @if (user.UserShiftRole == UserShiftRole.KeyHolder)
                     {
-                        var morning = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
-                        var night = submissions.FirstOrDefault(s => s.UserId == user.Id && s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
+                        <span class="text-warning ms-1">★</span>
+                    }
+                </td>
 
-                        var morningOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDayId == day.Id && l.ShiftType == ShiftType.Morning);
-                        var nightOriginal = originalLogs.FirstOrDefault(l => l.TargetUserId == user.Id && l.ShiftDayId == day.Id && l.ShiftType == ShiftType.Night);
+                @foreach (var day in shiftDays)
+                {
+                    foreach (ShiftType type in new[] { ShiftType.Morning, ShiftType.Night })
+                    {
+                        var current = submissions.FirstOrDefault(s =>
+                            s.UserId == user.Id &&
+                            s.ShiftDayId == day.Id &&
+                            s.ShiftType == type);
 
-                        string morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
-                        string nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
+                        var state = current?.ShiftStatus ?? ShiftState.None;
 
-                        string morningOrigSymbol = ConvertStateToSymbol(morningOriginal?.OldState);
-                        string nightOrigSymbol = ConvertStateToSymbol(nightOriginal?.OldState);
+                        var backup = backups.FirstOrDefault(b =>
+                            b.UserId == user.Id &&
+                            b.ShiftDayId == day.Id &&
+                            b.ShiftType == type);
 
-                        string morningClass = morningOrigSymbol != morningSymbol ? "bg-warning" : "";
-                        string nightClass = nightOrigSymbol != nightSymbol ? "bg-warning" : "";
+                        bool isDiff = backup != null && backup.ShiftStatus != state;
 
-                        <td class="editable-cell @morningClass"
+                        string display = state switch
+                        {
+                            ShiftState.Accepted => "〇",
+                            ShiftState.NotAccepted => "",
+                            ShiftState.WantToGiveAway => "△",
+                            ShiftState.KeyHolder => "🔴",
+                            _ => "×"
+                        };
+
+                        <td class="editable-cell @(isDiff ? "bg-warning" : "")"
                             data-user="@user.Id"
-                            data-date="@day.Date.ToString("yyyy-MM-dd")"
-                            data-shift="Morning"
-                            data-original="@morningOrigSymbol">
-                            @morningSymbol
-                        </td>
-
-                        <td class="editable-cell @nightClass"
-                            data-user="@user.Id"
-                            data-date="@day.Date.ToString("yyyy-MM-dd")"
-                            data-shift="Night"
-                            data-original="@nightOrigSymbol">
-                            @nightSymbol
+                            data-day="@day.Date.ToString("yyyy-MM-dd")"
+                            data-type="@((int)type)"
+                            data-state="@((int)state)">
+                            @display
                         </td>
                     }
-                </tr>
-            }
-        </tbody>
-    </table>
+                }
+            </tr>
+        }
+    </tbody>
 
-    <button type="button" id="saveChanges" class="btn btn-primary">変更を保存</button>
-    <a asp-action="Index" class="btn btn-secondary">戻る</a>
-</form>
+    <tfoot>
+        <tr>
+            <td colspan="2">〇</td>
+            @for (int i = 0; i < totalAccepted.Count; i++)
+            {
+                <td data-foot="accepted" data-idx="@i">@totalAccepted[i]</td>
+            }
+        </tr>
+        <tr>
+            <td colspan="2">🔴</td>
+            @for (int i = 0; i < keyAccepted.Count; i++)
+            {
+                <td data-foot="key" data-idx="@i">@keyAccepted[i]</td>
+            }
+        </tr>
+        <tr>
+            <td colspan="2">残り</td>
+            @for (int i = 0; i < remaining.Count; i++)
+            {
+                <td data-foot="remain" data-idx="@i">@remaining[i]</td>
+            }
+        </tr>
+    </tfoot>
+</table>
+
+<button id="saveBtn" class="btn btn-primary mt-3">保存</button>
+<a asp-controller="Admin" asp-action="Index" asp-route-periodId="@selectedPeriodId"
+   class="btn btn-secondary mt-3 ms-2">保存せずに戻る</a>
 
 @section Scripts {
-    <style>
-        .bg-warning {
-            background-color: #fff3cd !important;
-        }
+<script>
+    const cells = document.querySelectorAll(".editable-cell");
+    const acceptedTds = [...document.querySelectorAll('[data-foot="accepted"]')];
+    const keyTds = [...document.querySelectorAll('[data-foot="key"]')];
+    const remainTds = [...document.querySelectorAll('[data-foot="remain"]')];
 
-        .editable-cell:hover {
-            cursor: pointer;
-            opacity: 0.8;
-        }
-    </style>
+    const requiredByCol = acceptedTds.map((td, i) => {
+        const a = parseInt(td.innerText || "0", 10);
+        const r = parseInt(remainTds[i]?.innerText || "0", 10);
+        return a + r;
+    });
 
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const cells = document.querySelectorAll(".editable-cell");
-            let updates = [];
-            const symbols = ["×", "〇", "△", ""];
+    function render(cell, state) {
+        cell.dataset.state = state;
+        cell.innerText =
+            state == 1 ? "〇" :
+            state == 3 ? "△" :
+            state == 4 ? "🔴" : "";
+    }
 
-            cells.forEach(cell => {
-                cell.addEventListener("click", function () {
-                    let currentSymbol = this.textContent.trim();
-                    let idx = symbols.indexOf(currentSymbol);
-                    if (idx < 0) idx = 0;
-                    let nextSymbol = symbols[(idx + 1) % symbols.length];
-                    this.textContent = nextSymbol;
+    function nextLeft(state) {
+        if (state == 1) return 2;
+        if (state == 2) return 0;
+        if (state == 0) return 1;
+        return state;
+    }
 
-                    let shiftData = {
-                        userId: this.dataset.user,
-                        date: this.dataset.date,
-                        shiftType: this.dataset.shift === "Morning" ? 0 : 1,
-                        shiftStatus: nextSymbol
-                    };
 
-                    let existingIndex = updates.findIndex(u =>
-                        u.userId === shiftData.userId &&
-                        u.date === shiftData.date &&
-                        u.shiftType === shiftData.shiftType
-                    );
+    function nextRight(state) {
+        // 〇 → 🔴 → △ → 〇
+        if (state == 1) return 4;
+        if (state == 4) return 3;
+        if (state == 3) return 1;
+        return state;
+    }
 
-                    if (existingIndex >= 0) {
-                        updates[existingIndex] = shiftData;
-                    } else {
-                        updates.push(shiftData);
-                    }
+    function recalcFooter() {
+        const accepted = new Array(acceptedTds.length).fill(0);
+        const key = new Array(keyTds.length).fill(0);
 
-                    let original = this.dataset.original;
-                    if (original !== nextSymbol) {
-                        this.classList.add("bg-warning");
-                    } else {
-                        this.classList.remove("bg-warning");
-                    }
-                });
-            });
+        cells.forEach(cell => {
+            const col = cell.cellIndex - 2;
+            if (col < 0 || col >= accepted.length) return;
 
-            document.getElementById("saveChanges").addEventListener("click", function () {
-                const periodId = document.getElementById("selectedPeriodId").value;
+            const state = parseInt(cell.dataset.state);
+            if (state === 1) accepted[col]++;
+            if (state === 4) key[col]++;
+        });
 
-                fetch('/Admin/UpdateShifts?periodId=' + periodId, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
-                    },
-                    body: JSON.stringify(updates)
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            alert("シフトを更新しました");
-                            location.reload();
-                        } else {
-                            alert("更新に失敗しました: " + data.error);
-                        }
-                    })
-                    .catch(err => {
-                        console.error("通信エラー:", err);
-                        alert("通信エラーが発生しました");
-                    });
+        acceptedTds.forEach((td, i) => td.innerText = accepted[i]);
+        keyTds.forEach((td, i) => td.innerText = key[i]);
+        remainTds.forEach((td, i) =>
+            td.innerText = Math.max(requiredByCol[i] - accepted[i], 0)
+        );
+    }
+
+    cells.forEach(cell => {
+        cell.addEventListener("click", () => {
+            const s = parseInt(cell.dataset.state);
+            render(cell, nextLeft(s));
+            recalcFooter();
+        });
+
+        cell.addEventListener("contextmenu", e => {
+            e.preventDefault();
+            const s = parseInt(cell.dataset.state);
+            if (s !== 2 && s !== 0) {
+                render(cell, nextRight(s));
+                recalcFooter();
+            }
+        });
+    });
+
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+        const updates = [];
+        cells.forEach(cell => {
+            updates.push({
+                userId: cell.dataset.user,
+                date: cell.dataset.day,
+                shiftType: parseInt(cell.dataset.type),
+                shiftStatus:
+                    cell.dataset.state == 1 ? "〇" :
+                    cell.dataset.state == 3 ? "△" :
+                    cell.dataset.state == 4 ? "🔴" : ""
             });
         });
-    </script>
-}
 
-@functions {
-    string ConvertStateToSymbol(sumile.Models.ShiftState? state)
-    {
-        return state switch
-        {
-            sumile.Models.ShiftState.Accepted => "〇",
-            sumile.Models.ShiftState.WantToGiveAway => "△",
-            sumile.Models.ShiftState.NotAccepted => "",
-            _ => "×"
-        };
-    }
+        const res = await fetch(`/Admin/UpdateShifts?periodId=@selectedPeriodId`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updates)
+        });
+
+        const result = await res.json();
+        if (result.success) {
+            alert("保存しました");
+            location.reload();
+        } else {
+            alert(result.error ?? "保存に失敗しました");
+        }
+    });
+</script>
 }

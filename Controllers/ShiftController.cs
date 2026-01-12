@@ -125,83 +125,75 @@ namespace sumile.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> SubmitShifts([FromForm] string selectedShifts, [FromForm] int periodId)
+        public async Task<IActionResult> SubmitShifts([FromForm] string selectedShifts,[FromForm] int periodId)
         {
             var currentUser = await _userManager.GetUserAsync(User);
-            if (currentUser == null) return RedirectToAction("Login", "Account");
+            if (currentUser == null)
+                return RedirectToAction("Login", "Account");
 
             var userId = currentUser.Id;
             var userTypeStr = HttpContext.Session.GetString("UserType") ?? "Normal";
-            UserType userType = Enum.TryParse<UserType>(userTypeStr, true, out var parsedType) ? parsedType : UserType.Normal;
+            UserType userType = Enum.TryParse(userTypeStr, out UserType ut) ? ut : UserType.Normal;
             var userShiftRole = currentUser.UserShiftRole;
 
-            if (string.IsNullOrEmpty(selectedShifts))
-            {
-                TempData["ErrorMessage"] = "シフトを選択してください。";
-                return RedirectToAction("Submission", new { periodId });
-            }
-
-            var shiftList = JsonConvert.DeserializeObject<List<ShiftSubmissionViewModel>>(selectedShifts);
-            if (shiftList == null || shiftList.Count == 0)
-            {
-                TempData["ErrorMessage"] = "シフトを選択してください。";
-                return RedirectToAction("Submission", new { periodId });
-            }
-
+            // 対象期間の ShiftDay を全取得
             var shiftDays = await _context.ShiftDays
                 .Where(d => d.RecruitmentPeriodId == periodId)
                 .ToListAsync();
 
-            var dateToDay = shiftDays.ToDictionary(d => d.Date.Date, d => d.Id);
+            // View から送られてきた選択データ
+            var selectedList = string.IsNullOrEmpty(selectedShifts)
+                ? new List<ShiftSubmissionViewModel>()
+                : JsonConvert.DeserializeObject<List<ShiftSubmissionViewModel>>(selectedShifts)
+                ?? new List<ShiftSubmissionViewModel>();
+
+            // 既存データは一旦削除（この期間・このユーザー）
+            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
+            var existing = await _context.ShiftSubmissions
+                .Where(s => s.UserId == userId && shiftDayIds.Contains(s.ShiftDayId))
+                .ToListAsync();
+
+            _context.ShiftSubmissions.RemoveRange(existing);
+
             var submissions = new List<ShiftSubmission>();
 
-            foreach (var shift in shiftList)
+            foreach (var day in shiftDays)
             {
-                var status = shift.ShiftSymbol switch
+                foreach (ShiftType shiftType in Enum.GetValues(typeof(ShiftType)))
                 {
-                    "〇" => ShiftState.Accepted,
-                    "△" => ShiftState.WantToGiveAway,
-                    _ => ShiftState.NotAccepted
-                };
+                    // View から該当セルが送られてきているか
+                    var selected = selectedList.FirstOrDefault(s =>
+                        DateTime.Parse(s.Date).Date == day.Date.Date &&
+                        s.ShiftType == shiftType);
 
-                if (!DateTime.TryParse(shift.Date, out var parsedDate)) continue;
-                var dateOnly = parsedDate.Date;
+                    ShiftState status = selected?.ShiftSymbol switch
+                    {
+                        "〇" => ShiftState.Accepted,
+                        "△" => ShiftState.WantToGiveAway,
+                        _   => ShiftState.None   // ← ★ 未選択は必ず None
+                    };
 
-                if (!dateToDay.TryGetValue(dateOnly, out var shiftDayId)) continue;
-
-                submissions.Add(new ShiftSubmission
-                {
-                    UserId = userId,
-                    ShiftDayId = shiftDayId,
-                    ShiftType = shift.ShiftType,
-                    ShiftStatus = status,
-                    IsSelected = true,
-                    SubmittedAt = DateTime.UtcNow,
-                    UserType = userType,
-                    UserShiftRole = userShiftRole
-                });
+                    submissions.Add(new ShiftSubmission
+                    {
+                        UserId = userId,
+                        ShiftDayId = day.Id,
+                        ShiftType = shiftType,
+                        ShiftStatus = status,
+                        IsSelected = status != ShiftState.None,
+                        SubmittedAt = DateTime.UtcNow,
+                        UserType = userType,
+                        UserShiftRole = userShiftRole
+                    });
+                }
             }
 
-            if (submissions.Any())
-            {
-                var shiftDayIds = submissions.Select(s => s.ShiftDayId).Distinct().ToList();
-                var existing = await _context.ShiftSubmissions
-                    .Where(s => s.UserId == userId && shiftDayIds.Contains(s.ShiftDayId))
-                    .ToListAsync();
+            _context.ShiftSubmissions.AddRange(submissions);
+            await _context.SaveChangesAsync();
 
-                _context.ShiftSubmissions.RemoveRange(existing);
-                _context.ShiftSubmissions.AddRange(submissions);
-                await _context.SaveChangesAsync();
-
-                TempData["SuccessMessage"] = "シフトが提出されました。";
-            }
-            else
-            {
-                TempData["ErrorMessage"] = "有効なシフトが選択されていません。";
-            }
-
+            TempData["SuccessMessage"] = "シフトが提出されました。";
             return RedirectToAction("Submission", new { periodId });
         }
+
         // シフト提出時の提出済みシフト取得
         [HttpGet]
         public async Task<IActionResult> SubmissioList(int? periodId)
