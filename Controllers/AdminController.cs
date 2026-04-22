@@ -272,10 +272,20 @@ namespace sumile.Controllers
 
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> UpdateShifts([FromBody] List<ShiftUpdateModel> shiftUpdates, [FromQuery] int periodId)
         {
             try
             {
+                if (!await IsAdminUser())
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new
+                    {
+                        success = false,
+                        error = "管理者のみこの操作を実行できます。"
+                    });
+                }
+
                 if (shiftUpdates == null || !shiftUpdates.Any())
                     return Json(new { success = false, error = "シフト更新データが空です。" });
 

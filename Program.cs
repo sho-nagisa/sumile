@@ -53,6 +53,11 @@ builder.Services.AddSession(options =>
     options.Cookie.SameSite = SameSiteMode.Strict;
 });
 
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "RequestVerificationToken";
+});
+
 builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<ShiftPdfService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();

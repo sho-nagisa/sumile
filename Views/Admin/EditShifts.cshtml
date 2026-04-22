@@ -34,6 +34,8 @@
 
 <hr />
 
+@Html.AntiForgeryToken()
+
 <table class="table table-bordered table-sm text-center align-middle">
     <thead>
         <tr>
@@ -162,6 +164,8 @@
     const acceptedTds = [...document.querySelectorAll('[data-foot="accepted"]')];
     const keyTds = [...document.querySelectorAll('[data-foot="key"]')];
     const remainTds = [...document.querySelectorAll('[data-foot="remain"]')];
+    const requestVerificationToken =
+        document.querySelector('input[name="__RequestVerificationToken"]')?.value;
 
     const requiredByCol = acceptedTds.map((td, i) => {
         const a = parseInt(td.innerText || "0", 10);
@@ -246,11 +250,21 @@
 
         const res = await fetch(`/Admin/UpdateShifts?periodId=@selectedPeriodId`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "RequestVerificationToken": requestVerificationToken ?? ""
+            },
             body: JSON.stringify(updates)
         });
 
-        const result = await res.json();
+        let result;
+        try {
+            result = await res.json();
+        } catch {
+            alert("保存に失敗しました。権限またはCSRFトークンを確認してください。");
+            return;
+        }
+
         if (result.success) {
             alert("保存しました");
             location.reload();
