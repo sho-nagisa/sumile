@@ -582,7 +582,7 @@ namespace sumile.Controllers
                 }
 
                 workload.RequiredCount = entry.Value;
-                workload.RequiredWorkers = DailyWorkload.CalculateRequiredPeople(entry.Value);
+                workload.RequiredWorkers = DailyWorkload.CalculateRequiredWorkers(entry.Value);
             }
 
             await _context.SaveChangesAsync();
@@ -619,9 +619,12 @@ namespace sumile.Controllers
                 if (!workloads.TryGetValue(shiftDay.Id, out var workload))
                     continue;
 
-                int required = workload.RequiredCount;
-                int targetNormal = required / 2;
-                int targetKey = required - targetNormal;
+                int requiredWorkers = workload.RequiredWorkers > 0
+                    ? workload.RequiredWorkers
+                    : DailyWorkload.CalculateRequiredWorkers(workload.RequiredCount);
+
+                int targetNormal = requiredWorkers / 2;
+                int targetKey = requiredWorkers - targetNormal;
 
                 foreach (ShiftType type in Enum.GetValues(typeof(ShiftType)))
                 {
@@ -639,7 +642,7 @@ namespace sumile.Controllers
                     selected.AddRange(normals);
 
                     // 足りなければNormalで補う
-                    int stillNeeded = required - selected.Count;
+                    int stillNeeded = requiredWorkers - selected.Count;
                     if (stillNeeded > 0)
                     {
                         var remainingNormals = candidates
