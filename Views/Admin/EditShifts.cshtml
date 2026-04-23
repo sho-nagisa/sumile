@@ -1,4 +1,5 @@
 ﻿@using sumile.Models
+@using sumile.Services
 @using System.Globalization
 
 @{
@@ -10,11 +11,14 @@
     var backups = ViewBag.Backups as List<SubmitBackup> ?? new List<SubmitBackup>();
 
     var workloads = ViewBag.Workloads as List<DailyWorkload> ?? new List<DailyWorkload>();
+    var workloadCells = ViewBag.WorkloadCells as List<ShiftTableWorkloadCell> ?? new List<ShiftTableWorkloadCell>();
+    var shiftColumns = ViewBag.ShiftColumns as List<ShiftTableColumn> ?? new List<ShiftTableColumn>();
     var totalAccepted = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
     var keyAccepted = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
+    var requiredWorkers = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
     var remaining = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
 
-    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
 }
 
@@ -35,6 +39,10 @@
 <hr />
 
 @Html.AntiForgeryToken()
+
+<div class="text-muted small mb-2">
+    表上段の数値は必要枚数です。下段の必要人数・残りは人数で表示しています。
+</div>
 
 <table class="table table-bordered table-sm text-center align-middle">
     <thead>
@@ -60,18 +68,9 @@
             }
         </tr>
         <tr>
-            @for (int i = 0; i < workloads.Count; i++)
+            @foreach (var cell in workloadCells)
             {
-                var w = workloads[i];
-                bool isSingle = (i == 0 || i == workloads.Count - 1);
-                if (isSingle)
-                {
-                    <td>@w.RequiredCount</td>
-                }
-                else
-                {
-                    <td colspan="2">@w.RequiredCount</td>
-                }
+                <td colspan="@cell.Colspan">@cell.RequiredCount</td>
             }
         </tr>
     </thead>
@@ -89,47 +88,52 @@
                     }
                 </td>
 
-                @foreach (var day in shiftDays)
+                @foreach (var column in shiftColumns)
                 {
-                    foreach (ShiftType type in new[] { ShiftType.Morning, ShiftType.Night })
+                    var current = submissions.FirstOrDefault(s =>
+                        s.UserId == user.Id &&
+                        s.ShiftDayId == column.ShiftDayId &&
+                        s.ShiftType == column.ShiftType);
+
+                    var state = current?.ShiftStatus ?? ShiftState.None;
+
+                    var backup = backups.FirstOrDefault(b =>
+                        b.UserId == user.Id &&
+                        b.ShiftDayId == column.ShiftDayId &&
+                        b.ShiftType == column.ShiftType);
+
+                    bool isDiff = backup != null && backup.ShiftStatus != state;
+
+                    string display = state switch
                     {
-                        var current = submissions.FirstOrDefault(s =>
-                            s.UserId == user.Id &&
-                            s.ShiftDayId == day.Id &&
-                            s.ShiftType == type);
+                        ShiftState.Accepted => "〇",
+                        ShiftState.NotAccepted => "",
+                        ShiftState.WantToGiveAway => "△",
+                        ShiftState.KeyHolder => "🔴",
+                        _ => "×"
+                    };
 
-                        var state = current?.ShiftStatus ?? ShiftState.None;
-
-                        var backup = backups.FirstOrDefault(b =>
-                            b.UserId == user.Id &&
-                            b.ShiftDayId == day.Id &&
-                            b.ShiftType == type);
-
-                        bool isDiff = backup != null && backup.ShiftStatus != state;
-
-                        string display = state switch
-                        {
-                            ShiftState.Accepted => "〇",
-                            ShiftState.NotAccepted => "",
-                            ShiftState.WantToGiveAway => "△",
-                            ShiftState.KeyHolder => "🔴",
-                            _ => "×"
-                        };
-
-                        <td class="editable-cell @(isDiff ? "bg-warning" : "")"
-                            data-user="@user.Id"
-                            data-day="@day.Date.ToString("yyyy-MM-dd")"
-                            data-type="@((int)type)"
-                            data-state="@((int)state)">
-                            @display
-                        </td>
-                    }
+                    <td class="editable-cell @(isDiff ? "bg-warning" : "")"
+                        data-user="@user.Id"
+                        data-day="@column.Date.ToString("yyyy-MM-dd")"
+                        data-type="@((int)column.ShiftType)"
+                        data-state="@((int)state)">
+                        @display
+                    </td>
                 }
             </tr>
         }
     </tbody>
 
     <tfoot>
+        <tr>
+            <td colspan="2">必要人数</td>
+            @for (int i = 0; i < requiredWorkers.Count; i++)
+            {
+                <td data-foot="required" data-idx="@i">@requiredWorkers[i]</td>
+            }
+        </tr>
+
         <tr>
             <td colspan="2">〇</td>
             @for (int i = 0; i < totalAccepted.Count; i++)
@@ -148,7 +152,7 @@
             <td colspan="2">残り</td>
             @for (int i = 0; i < remaining.Count; i++)
             {
-                <td data-foot="remain" data-idx="@i">@remaining[i]</td>
+                <td data-foot="remain" data-idx="@i" class="@(remaining[i] < 0 ? "text-danger fw-bold" : "")">@remaining[i]</td>
             }
         </tr>
     </tfoot>
@@ -163,15 +167,12 @@
     const cells = document.querySelectorAll(".editable-cell");
     const acceptedTds = [...document.querySelectorAll('[data-foot="accepted"]')];
     const keyTds = [...document.querySelectorAll('[data-foot="key"]')];
+    const requiredTds = [...document.querySelectorAll('[data-foot="required"]')];
     const remainTds = [...document.querySelectorAll('[data-foot="remain"]')];
     const requestVerificationToken =
         document.querySelector('input[name="__RequestVerificationToken"]')?.value;
 
-    const requiredByCol = acceptedTds.map((td, i) => {
-        const a = parseInt(td.innerText || "0", 10);
-        const r = parseInt(remainTds[i]?.innerText || "0", 10);
-        return a + r;
-    });
+    const requiredByCol = requiredTds.map(td => parseInt(td.innerText || "0", 10));
 
     function render(cell, state) {
         cell.dataset.state = state;
@@ -206,15 +207,18 @@
             if (col < 0 || col >= accepted.length) return;
 
             const state = parseInt(cell.dataset.state);
-            if (state === 1) accepted[col]++;
+            if (state === 1 || state === 4) accepted[col]++;
             if (state === 4) key[col]++;
         });
 
         acceptedTds.forEach((td, i) => td.innerText = accepted[i]);
         keyTds.forEach((td, i) => td.innerText = key[i]);
-        remainTds.forEach((td, i) =>
-            td.innerText = Math.max(requiredByCol[i] - accepted[i], 0)
-        );
+        remainTds.forEach((td, i) => {
+            const diff = accepted[i] - requiredByCol[i];
+            td.innerText = diff;
+            td.classList.toggle("text-danger", diff < 0);
+            td.classList.toggle("fw-bold", diff < 0);
+        });
     }
 
     cells.forEach(cell => {

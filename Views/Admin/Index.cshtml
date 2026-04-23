@@ -1,18 +1,22 @@
 ﻿@using System.Globalization
 @using sumile.Models
+@using sumile.Services
 
 @{
     ViewData["Title"] = "シフト一覧(管理者用)";
     var workloads = (ViewBag.Workloads as IEnumerable<DailyWorkload>)?.ToList()
                     ?? new List<DailyWorkload>();
-    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
     var users = (ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>()).OrderBy(u => u.CustomId);
     var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
     var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
+    var workloadCells = ViewBag.WorkloadCells as List<ShiftTableWorkloadCell> ?? new List<ShiftTableWorkloadCell>();
+    var shiftColumns = ViewBag.ShiftColumns as List<ShiftTableColumn> ?? new List<ShiftTableColumn>();
     var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();// 変更点ハイライト用（現状は未使用で後付けの表示用）
     var totalAcceptedList = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
     var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
+    var requiredWorkersList = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
     var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
 }
 
@@ -80,6 +84,10 @@
     }
 </style>
 
+<div class="text-muted small mb-2">
+    表上段の数値は必要枚数です。下段の必要人数・残りは人数で表示しています。
+</div>
+
 <table class="table table-bordered text-center">
     <thead>
         <tr>
@@ -104,21 +112,9 @@
             }
         </tr>
         <tr>
-            @for (int i = 0; i < workloads.Count; i++)
+            @foreach (var cell in workloadCells)
             {
-                var w = workloads[i];
-                bool isSingleColumn = (i == 0 || i == workloads.Count - 1);
-
-                if (isSingleColumn)
-                {
-                    <td>
-                        @w.RequiredCount
-                    </td>
-                }
-                else
-                {
-                    <td colspan="2">@w.RequiredCount</td>
-                }
+                <td colspan="@cell.Colspan">@cell.RequiredCount</td>
             }
         </tr>
     </thead>
@@ -135,29 +131,18 @@
                 }
                 <td>@(hasKeyHolder ? "★" : "")</td>
 
-                @foreach (var day in shiftDays)
+                @foreach (var column in shiftColumns)
                 {
-                    var morning = submissions.FirstOrDefault(s =>
+                    var submission = submissions.FirstOrDefault(s =>
                         s.UserId == user.Id &&
-                        s.ShiftDayId == day.Id &&
-                        s.ShiftType == ShiftType.Morning);
+                        s.ShiftDayId == column.ShiftDayId &&
+                        s.ShiftType == column.ShiftType);
 
-                    var night = submissions.FirstOrDefault(s =>
-                        s.UserId == user.Id &&
-                        s.ShiftDayId == day.Id &&
-                        s.ShiftType == ShiftType.Night);
+                    var key = $"{user.Id}_{column.ShiftDayId}_{(int)column.ShiftType}";
+                    string cellClass = diffKeys.Contains(key) ? "highlight-cell" : "";
+                    string symbol = ConvertStateToColoredSymbol(submission?.ShiftStatus, submission?.UserShiftRole);
 
-                    var keyMorning = $"{user.Id}_{day.Id}_0";
-                    var keyNight = $"{user.Id}_{day.Id}_1";
-
-                    string morningClass = diffKeys.Contains(keyMorning) ? "highlight-cell" : "";
-                    string nightClass = diffKeys.Contains(keyNight) ? "highlight-cell" : "";
-
-                    string morningSymbol = ConvertStateToColoredSymbol(morning?.ShiftStatus, morning?.UserShiftRole);
-                    string nightSymbol = ConvertStateToColoredSymbol(night?.ShiftStatus, night?.UserShiftRole);
-
-                    <td class="@morningClass">@Html.Raw(morningSymbol)</td>
-                    <td class="@nightClass">@Html.Raw(nightSymbol)</td>
+                    <td class="@cellClass">@Html.Raw(symbol)</td>
                 }
             </tr>
         }
@@ -166,8 +151,16 @@
 
     <tfoot>
         <tr>
+            <td colspan="2">必要人数</td>
+            @foreach (var v in requiredWorkersList)
+            {
+                <td>@v</td>
+            }
+        </tr>
+
+        <tr>
             <td colspan="2">〇の数</td>
-            @foreach (var v in ViewBag.TotalAcceptedList as List<int>)
+            @foreach (var v in totalAcceptedList)
             {
                 <td>@v</td>
             }
@@ -175,7 +168,7 @@
 
         <tr>
             <td colspan="2">赤丸</td>
-            @foreach (var v in ViewBag.KeyHolderAcceptedList as List<int>)
+            @foreach (var v in keyHolderAcceptedList)
             {
                 <td>@v</td>
             }
@@ -183,9 +176,9 @@
 
         <tr>
             <td colspan="2">残り</td>
-            @foreach (var v in ViewBag.RemainingWorkersList as List<int>)
+            @foreach (var v in remainingWorkersList)
             {
-                <td>@v</td>
+                <td class="@(v < 0 ? "text-danger fw-bold" : "")">@v</td>
             }
         </tr>
     </tfoot>
@@ -194,6 +187,9 @@
 @functions {
     string ConvertStateToColoredSymbol(ShiftState? state, UserShiftRole? role)
     {
+        if (state == ShiftState.KeyHolder)
+            return "<span style='color:red;'>〇</span>";
+
         string baseSymbol = state switch
         {
             ShiftState.Accepted => "〇",

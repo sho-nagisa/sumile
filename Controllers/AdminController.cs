@@ -99,8 +99,11 @@ namespace sumile.Controllers
             ViewBag.Dates = table.ShiftDays;
             ViewBag.Submissions = table.Submissions;
             ViewBag.Workloads = table.Workloads;
+            ViewBag.WorkloadCells = table.WorkloadCells;
+            ViewBag.ShiftColumns = table.ShiftColumns;
             ViewBag.TotalAcceptedList = table.TotalAcceptedList;
             ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
+            ViewBag.RequiredWorkersList = table.RequiredWorkersList;
             ViewBag.RemainingWorkersList = table.RemainingWorkersList;
 
             // ===== その他 View 用データ =====
@@ -253,10 +256,13 @@ namespace sumile.Controllers
             ViewBag.Dates                = table.ShiftDays;
             ViewBag.Submissions           = table.Submissions;
             ViewBag.Workloads             = table.Workloads;
+            ViewBag.WorkloadCells         = table.WorkloadCells;
+            ViewBag.ShiftColumns          = table.ShiftColumns;
 
             // 集計（Index と同一ロジック）
             ViewBag.TotalAcceptedList     = table.TotalAcceptedList;
             ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
+            ViewBag.RequiredWorkersList   = table.RequiredWorkersList;
             ViewBag.RemainingWorkersList  = table.RemainingWorkersList;
 
             // 初回状態（差分比較用・将来拡張）

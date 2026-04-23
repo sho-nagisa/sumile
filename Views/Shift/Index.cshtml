@@ -8,14 +8,17 @@
 
     var workloads = (ViewBag.Workloads as IEnumerable<DailyWorkload>)?.ToList()
                     ?? new List<DailyWorkload>();
-    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod>;
+    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
     var users = (ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>()).OrderBy(u => u.CustomId);
     var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
     var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
+    var workloadCells = ViewBag.WorkloadCells as List<ShiftTableWorkloadCell> ?? new List<ShiftTableWorkloadCell>();
+    var shiftColumns = ViewBag.ShiftColumns as List<ShiftTableColumn> ?? new List<ShiftTableColumn>();
     var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();
     var totalAcceptedList = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
     var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
+    var requiredWorkersList = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
     var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
 }
 
@@ -60,6 +63,10 @@
     .highlight-cell { background-color: #fff3cd; }
 </style>
 
+<div class="text-muted small mb-2">
+    表上段の数値は必要枚数です。下段の必要人数・残りは人数で表示しています。
+</div>
+
 <table class="table table-bordered text-center">
     <thead>
         <tr>
@@ -84,9 +91,9 @@
             }
         </tr>
         <tr>
-            @foreach (var w in workloads)
+            @foreach (var cell in workloadCells)
             {
-                <td colspan="2">@w.RequiredCount</td>
+                <td colspan="@cell.Colspan">@cell.RequiredCount</td>
             }
         </tr>
     </thead>
@@ -99,35 +106,21 @@
                 <td>@user.Name</td>
                 <td>@(user.UserShiftRole == UserShiftRole.KeyHolder ? "★" : "")</td>
 
-                @foreach (var day in shiftDays)
+                @foreach (var column in shiftColumns)
                 {
-                    var morning = submissions.FirstOrDefault(s =>
+                    var submission = submissions.FirstOrDefault(s =>
                         s.UserId == user.Id &&
-                        s.ShiftDayId == day.Id &&
-                        s.ShiftType == ShiftType.Morning);
+                        s.ShiftDayId == column.ShiftDayId &&
+                        s.ShiftType == column.ShiftType);
 
-                    var night = submissions.FirstOrDefault(s =>
-                        s.UserId == user.Id &&
-                        s.ShiftDayId == day.Id &&
-                        s.ShiftType == ShiftType.Night);
+                    var key = $"{user.Id}_{column.ShiftDayId}_{(int)column.ShiftType}";
+                    var display = ShiftDisplay.GetDisplay(submission?.ShiftStatus);
 
-                    var mKey = $"{user.Id}_{day.Id}_0";
-                    var nKey = $"{user.Id}_{day.Id}_1";
+                    if (submission?.UserShiftRole == UserShiftRole.KeyHolder && display.Symbol == "〇")
+                        display.CssClass += " shift-keyholder";
 
-                    var mDisplay = ShiftDisplay.GetDisplay(morning?.ShiftStatus);
-                    var nDisplay = ShiftDisplay.GetDisplay(night?.ShiftStatus);
-
-                    if (morning?.UserShiftRole == UserShiftRole.KeyHolder && mDisplay.Symbol == "〇")
-                        mDisplay.CssClass += " shift-keyholder";
-
-                    if (night?.UserShiftRole == UserShiftRole.KeyHolder && nDisplay.Symbol == "〇")
-                        nDisplay.CssClass += " shift-keyholder";
-
-                    <td class="@(diffKeys.Contains(mKey) ? "highlight-cell" : "") @mDisplay.CssClass">
-                        @mDisplay.Symbol
-                    </td>
-                    <td class="@(diffKeys.Contains(nKey) ? "highlight-cell" : "") @nDisplay.CssClass">
-                        @nDisplay.Symbol
+                    <td class="@(diffKeys.Contains(key) ? "highlight-cell" : "") @display.CssClass">
+                        @display.Symbol
                     </td>
                 }
             </tr>
@@ -135,6 +128,14 @@
     </tbody>
 
     <tfoot>
+        <tr>
+            <td colspan="2">必要人数</td>
+            @foreach (var v in requiredWorkersList)
+            {
+                <td>@v</td>
+            }
+        </tr>
+
         <tr>
             <td colspan="2">〇</td>
             @foreach (var v in totalAcceptedList)
@@ -153,7 +154,7 @@
             <td colspan="2">残り</td>
             @foreach (var v in remainingWorkersList)
             {
-                <td>@v</td>
+                <td class="@(v < 0 ? "text-danger fw-bold" : "")">@v</td>
             }
         </tr>
     </tfoot>
