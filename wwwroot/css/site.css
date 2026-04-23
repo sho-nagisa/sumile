@@ -20,3 +20,30 @@ html {
 body {
   margin-bottom: 60px;
 }
+
+.shift-table-fit {
+  width: 100%;
+  overflow: hidden;
+}
+
+.shift-table-fit > table {
+  transform-origin: top left;
+}
+
+@media (max-width: 767.98px) {
+  .shift-table-fit {
+    --shift-table-scale: 1;
+  }
+
+  .shift-table-fit > table {
+    width: max-content;
+    min-width: max-content;
+    transform: scale(var(--shift-table-scale));
+  }
+
+  .shift-table-fit > table th,
+  .shift-table-fit > table td {
+    padding: 0.25rem;
+    white-space: nowrap;
+  }
+}

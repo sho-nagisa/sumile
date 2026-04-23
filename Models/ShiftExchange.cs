@@ -6,10 +6,18 @@ namespace sumile.Models
 {
     public class ShiftExchange
     {
+        public const string StatusOpen = "Open";
+        public const string StatusPendingApproval = "PendingApproval";
+        public const string StatusFinalized = "Finalized";
+        public const string StatusAcceptedLegacy = "Accepted";
+
         public int Id { get; set; }
 
-        public string? UserId { get; set; }
-        public ApplicationUser? User { get; set; }
+        // 既存DBの UserId 列を、交換募集の表示先ユーザーとして使う。
+        [Column("UserId")]
+        public string? TargetUserId { get; set; }
+        [ForeignKey("TargetUserId")]
+        public ApplicationUser? TargetUser { get; set; }
 
         [Required]
         public string RequestedByUserId { get; set; }

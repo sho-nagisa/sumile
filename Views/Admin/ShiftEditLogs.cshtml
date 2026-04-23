@@ -1,9 +1,12 @@
-﻿@model List<sumile.Models.ShiftEditLog>
+@model List<sumile.Models.ShiftEditLog>
+@using sumile.Models
 
 @{
     ViewData["Title"] = "シフト変更ログ";
-    var periods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
+    var periods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+    var initialStateByKey = ViewBag.InitialStateByKey as Dictionary<string, ShiftState> ?? new();
+    var currentStateByKey = ViewBag.CurrentStateByKey as Dictionary<string, ShiftState> ?? new();
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -27,23 +30,37 @@
             <th>対象ユーザー</th>
             <th>シフト日</th>
             <th>区分</th>
-            <th>旧状態</th>
-            <th>新状態</th>
+            <th>初期状態</th>
+            <th>編集前</th>
+            <th>編集後</th>
+            <th>現在</th>
             <th>編集者</th>
             <th>編集日時</th>
+            <th>メモ</th>
         </tr>
     </thead>
     <tbody>
         @foreach (var log in Model)
         {
+            var key = $"{log.TargetUserId}_{log.ShiftDayId}_{(int)log.ShiftType}";
+            var initialState = initialStateByKey.TryGetValue(key, out var initial)
+                ? initial
+                : ShiftState.None;
+            var currentState = currentStateByKey.TryGetValue(key, out var current)
+                ? current
+                : ShiftState.None;
+
             <tr class="@(log.OldState != log.NewState ? "table-warning" : "")">
                 <td>@log.TargetUser?.Name</td>
                 <td>@log.ShiftDay?.Date.ToLocalTime().ToString("yyyy-MM-dd")</td>
                 <td>@log.ShiftType</td>
-                <td>@ConvertStateToSymbol(log.OldState)</td>
-                <td>@ConvertStateToSymbol(log.NewState)</td>
+                <td>@Html.Raw(ConvertStateToSymbol(initialState))</td>
+                <td>@Html.Raw(ConvertStateToSymbol(log.OldState))</td>
+                <td>@Html.Raw(ConvertStateToSymbol(log.NewState))</td>
+                <td>@Html.Raw(ConvertStateToSymbol(currentState))</td>
                 <td>@log.AdminUser?.Name</td>
                 <td>@log.EditDate.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                <td>@log.Note</td>
             </tr>
         }
     </tbody>
@@ -52,13 +69,14 @@
 <a asp-action="Index" class="btn btn-secondary">戻る</a>
 
 @functions {
-    string ConvertStateToSymbol(sumile.Models.ShiftState state)
+    string ConvertStateToSymbol(ShiftState state)
     {
         return state switch
         {
-            sumile.Models.ShiftState.Accepted => "〇",
-            sumile.Models.ShiftState.WantToGiveAway => "△",
-            sumile.Models.ShiftState.NotAccepted => "",
+            ShiftState.Accepted => "〇",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.NotAccepted => "",
+            ShiftState.KeyHolder => "<span class=\"text-danger\">〇</span>",
             _ => "×"
         };
     }

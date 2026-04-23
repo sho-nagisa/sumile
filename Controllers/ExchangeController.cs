@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using sumile.Services;
-using Microsoft.AspNetCore.Identity;
 
 public class ExchangeController : Controller
 {
@@ -19,6 +18,19 @@ public class ExchangeController : Controller
     {
         _context = context;
         _pdfService = pdfService;
+    }
+
+    private static bool IsOpenStatus(string status) =>
+        status == ShiftExchange.StatusOpen;
+
+    private static bool IsPendingApprovalStatus(string status) =>
+        status == ShiftExchange.StatusPendingApproval ||
+        status == ShiftExchange.StatusAcceptedLegacy;
+
+    private async Task<bool> IsAdminUser(string? userId)
+    {
+        if (string.IsNullOrEmpty(userId)) return false;
+        return await _context.Users.AnyAsync(u => u.Id == userId && u.IsAdmin);
     }
 
     public async Task<IActionResult> Create()
@@ -37,12 +49,17 @@ public class ExchangeController : Controller
             .ToDictionary(g => g.Key, g => g.ToList());
 
         ViewBag.ShiftsByPeriod = shiftsByPeriod;
+        ViewBag.TargetUsers = await _context.Users
+            .Where(u => u.Id != userId)
+            .OrderBy(u => u.CustomId)
+            .ToListAsync();
+
         return View();
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(int offeredShiftSubmissionId, int shiftDayId, ShiftType shiftType)
+    public async Task<IActionResult> Create(int offeredShiftSubmissionId, int shiftDayId, ShiftType shiftType, string? targetUserId)
     {
         var userId = HttpContext.Session.GetString("UserId");
         if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
@@ -58,8 +75,24 @@ public class ExchangeController : Controller
 
         if (submission == null) return BadRequest("無効なシフトが選択されました。");
 
+        if (!string.IsNullOrEmpty(targetUserId))
+        {
+            if (targetUserId == userId)
+            {
+                TempData["Message"] = "自分自身だけを表示先にはできません。";
+                return RedirectToAction(nameof(Create));
+            }
+
+            var targetExists = await _context.Users.AnyAsync(u => u.Id == targetUserId);
+            if (!targetExists) return BadRequest("表示先ユーザーが見つかりません。");
+        }
+
         var alreadyExists = await _context.ShiftExchanges
-            .AnyAsync(e => e.OfferedShiftSubmissionId == offeredShiftSubmissionId && e.Status == "Open");
+            .AnyAsync(e =>
+                e.OfferedShiftSubmissionId == offeredShiftSubmissionId &&
+                (e.Status == ShiftExchange.StatusOpen ||
+                 e.Status == ShiftExchange.StatusPendingApproval ||
+                 e.Status == ShiftExchange.StatusAcceptedLegacy));
         if (alreadyExists)
         {
             TempData["Message"] = "このシフトはすでに交換募集済みです。";
@@ -69,10 +102,11 @@ public class ExchangeController : Controller
         var exchange = new ShiftExchange
         {
             RequestedByUserId = userId,
+            TargetUserId = string.IsNullOrEmpty(targetUserId) ? null : targetUserId,
             OfferedShiftSubmissionId = offeredShiftSubmissionId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
-            Status = "Open"
+            Status = ShiftExchange.StatusOpen
         };
 
         _context.ShiftExchanges.Add(exchange);
@@ -95,86 +129,24 @@ public class ExchangeController : Controller
             .Include(e => e.OfferedShiftSubmission.User)
             .FirstOrDefaultAsync(e => e.Id == id);
 
-        if (exchange == null || exchange.Status != "Open" || exchange.AcceptedShiftSubmissionId != null)
-            return NotFound("募集が見つからないか、すでに成立しています。");
+        if (exchange == null || !IsOpenStatus(exchange.Status))
+            return NotFound("募集が見つからないか、すでに応募済みです。");
 
         if (exchange.RequestedByUserId == userId)
             return BadRequest("自分の募集には応募できません。");
 
-        var offered = exchange.OfferedShiftSubmission;
-        var now = DateTime.UtcNow;
+        if (!string.IsNullOrEmpty(exchange.TargetUserId) && exchange.TargetUserId != userId)
+            return BadRequest("この交換募集は指定されたユーザーだけが応募できます。");
 
-        // ✅ 【チェックコード】ShiftDay と RecruitmentPeriod の存在を確認
-        var shiftDay = await _context.ShiftDays
-            .Include(d => d.RecruitmentPeriod)
-            .FirstOrDefaultAsync(d => d.Id == offered.ShiftDayId);
-
-        if (shiftDay == null)
-        {
-
-            throw new Exception($"❌ ShiftDay が存在しません (ShiftDayId = {offered.ShiftDayId})");
-        }
-
-        if (shiftDay.RecruitmentPeriod == null)
-        {
-
-            throw new Exception($"❌ RecruitmentPeriod が存在しません (ShiftDayId = {shiftDay.Id})");
-        }
-
-        var log1 = new ShiftEditLog
-        {
-            AdminUserId = exchange.RequestedByUserId,
-            TargetUserId = offered.UserId,
-            ShiftDayId = offered.ShiftDayId,
-            ShiftType = offered.ShiftType,
-            OldState = offered.ShiftStatus,
-            NewState = ShiftState.None,
-            EditDate = now,
-            Note = "交換による投稿者シフト削除"
-        };
-
-        var user = await _context.Users.FindAsync(userId);
-        var acceptedSubmission = new ShiftSubmission
-        {
-            UserId = userId,
-            ShiftDayId = offered.ShiftDayId,
-            ShiftType = offered.ShiftType,
-            IsSelected = true,
-            SubmittedAt = now,
-            ShiftStatus = ShiftState.Accepted,
-            UserType = UserType.Normal,
-            UserShiftRole = user?.UserShiftRole ?? UserShiftRole.Normal
-        };
-
-        _context.ShiftSubmissions.Add(acceptedSubmission);
-        await _context.SaveChangesAsync(); // IDを確定
-
-        var log2 = new ShiftEditLog
-        {
-            AdminUserId = userId,
-            TargetUserId = userId,
-            ShiftDayId = offered.ShiftDayId,
-            ShiftType = offered.ShiftType,
-            OldState = ShiftState.None,
-            NewState = ShiftState.Accepted,
-            EditDate = now,
-            Note = "交換による応募者シフト取得"
-        };
-
-        _context.ShiftSubmissions.Remove(offered);
-        _context.ShiftEditLogs.AddRange(log1, log2);
-
-        // トラッキングエラーを避けるため AcceptedShiftSubmissionId をIDで紐付け
         exchange.AcceptedByUserId = userId;
-        exchange.AcceptedShiftSubmissionId = acceptedSubmission.Id;
-        exchange.AcceptedAt = now;
-        exchange.UpdatedAt = now;
-        exchange.Status = "Accepted";
+        exchange.AcceptedAt = DateTime.UtcNow;
+        exchange.UpdatedAt = DateTime.UtcNow;
+        exchange.Status = ShiftExchange.StatusPendingApproval;
         _context.ShiftExchanges.Update(exchange);
 
         await _context.SaveChangesAsync();
 
-        TempData["Message"] = "交換が成立しました。";
+        TempData["Message"] = "応募しました。管理者の承認待ちです。";
         return RedirectToAction(nameof(Index));
     }
 
@@ -184,75 +156,111 @@ public class ExchangeController : Controller
     {
         var userId = HttpContext.Session.GetString("UserId");
         if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+        if (!await IsAdminUser(userId)) return Unauthorized();
 
         var exchange = await _context.ShiftExchanges
             .Include(e => e.OfferedShiftSubmission)
                 .ThenInclude(s => s.ShiftDay)
                     .ThenInclude(d => d.RecruitmentPeriod)
+            .Include(e => e.AcceptedByUser)
             .FirstOrDefaultAsync(e => e.Id == exchangeId);
 
-        var accepted = await _context.ShiftSubmissions
-            .Include(s => s.ShiftDay)
-                .ThenInclude(d => d.RecruitmentPeriod)
-            .FirstOrDefaultAsync(s => s.Id == exchange.AcceptedShiftSubmissionId);
+        if (exchange == null || !IsPendingApprovalStatus(exchange.Status))
+            return NotFound("承認待ちの交換が見つかりません。");
+
+        if (string.IsNullOrEmpty(exchange.AcceptedByUserId))
+            return BadRequest("応募者が設定されていません。");
 
         var offered = exchange.OfferedShiftSubmission;
-        if (offered == null || accepted == null)
+        if (offered == null)
             return BadRequest("シフト情報が不完全です。");
 
-        // ✅ チェック1：ShiftDayがnullでないか
-        if (accepted.ShiftDay == null)
-            throw new Exception("❌ accepted.ShiftDay が NULL");
+        if (offered.ShiftDay == null)
+            throw new Exception("❌ offered.ShiftDay が NULL");
 
-        // ✅ チェック2：RecruitmentPeriodがnullでないか
-        if (accepted.ShiftDay.RecruitmentPeriod == null)
-            throw new Exception($"❌ accepted.ShiftDay に紐づく RecruitmentPeriod が存在しません (ShiftDayId = {accepted.ShiftDay.Id})");
+        if (offered.ShiftDay.RecruitmentPeriod == null)
+            throw new Exception($"❌ offered.ShiftDay に紐づく RecruitmentPeriod が存在しません (ShiftDayId = {offered.ShiftDay.Id})");
 
-        // ✅ チェック3：RecruitmentPeriodId が DB に存在するか
-        var recruitmentPeriodId = accepted.ShiftDay.RecruitmentPeriodId;
+        var recruitmentPeriodId = offered.ShiftDay.RecruitmentPeriodId;
         var exists = await _context.RecruitmentPeriods.AnyAsync(r => r.Id == recruitmentPeriodId);
         if (!exists)
             throw new Exception($"❌ RecruitmentPeriodId = {recruitmentPeriodId} が DB に存在しません");
 
         var now = DateTime.UtcNow;
+        var oldOfferedState = offered.ShiftStatus;
 
         var log1 = new ShiftEditLog
         {
-            AdminUserId = exchange.RequestedByUserId,
+            AdminUserId = userId,
             TargetUserId = offered.UserId,
             ShiftDayId = offered.ShiftDayId,
             ShiftType = offered.ShiftType,
-            OldState = offered.ShiftStatus,
-            NewState = ShiftState.None,
+            OldState = oldOfferedState,
+            NewState = ShiftState.NotAccepted,
             EditDate = now,
-            Note = "交換確定：投稿者シフト削除"
+            Note = "交換確定：譲渡元を不採用へ変更"
         };
 
-        var oldAccepted = accepted.ShiftStatus;
-        accepted.ShiftStatus = ShiftState.Accepted;
+        offered.ShiftStatus = ShiftState.NotAccepted;
+        offered.IsSelected = false;
+        offered.SubmittedAt = now;
+        offered.UserType = UserType.AdminUpdated;
+
+        var accepted = await _context.ShiftSubmissions
+            .FirstOrDefaultAsync(s =>
+                s.UserId == exchange.AcceptedByUserId &&
+                s.ShiftDayId == offered.ShiftDayId &&
+                s.ShiftType == offered.ShiftType);
+
+        var oldAccepted = accepted?.ShiftStatus ?? ShiftState.None;
+        var isNewAcceptedSubmission = accepted == null;
+        if (accepted == null)
+        {
+            accepted = new ShiftSubmission
+            {
+                UserId = exchange.AcceptedByUserId,
+                ShiftDayId = offered.ShiftDayId,
+                ShiftType = offered.ShiftType,
+                UserShiftRole = exchange.AcceptedByUser?.UserShiftRole ?? UserShiftRole.Normal
+            };
+            _context.ShiftSubmissions.Add(accepted);
+        }
+
+        accepted.IsSelected = true;
         accepted.SubmittedAt = now;
+        accepted.ShiftStatus = ShiftState.Accepted;
+        accepted.UserType = UserType.AdminUpdated;
+        accepted.UserShiftRole = exchange.AcceptedByUser?.UserShiftRole ?? accepted.UserShiftRole;
 
         var log2 = new ShiftEditLog
         {
-            AdminUserId = exchange.AcceptedByUserId,
+            AdminUserId = userId,
             TargetUserId = accepted.UserId,
             ShiftDayId = accepted.ShiftDayId,
             ShiftType = accepted.ShiftType,
             OldState = oldAccepted,
             NewState = ShiftState.Accepted,
             EditDate = now,
-            Note = "交換確定：応募者シフトをAcceptedへ更新"
+            Note = "交換確定：応募者へシフトを付与"
         };
 
-        _context.ShiftSubmissions.Remove(offered);
-        _context.ShiftSubmissions.Update(accepted);
+        _context.ShiftSubmissions.Update(offered);
+        if (!isNewAcceptedSubmission)
+        {
+            _context.ShiftSubmissions.Update(accepted);
+        }
         _context.ShiftEditLogs.AddRange(log1, log2);
+
+        exchange.AcceptedShiftSubmission = accepted;
+        exchange.UpdatedAt = now;
+        exchange.Status = ShiftExchange.StatusFinalized;
+        _context.ShiftExchanges.Update(exchange);
+
         await _context.SaveChangesAsync();
 
         TempData["Message"] = "交換が確定されました。";
 
-        // ✅ PDF出力前に RecruitmentPeriodId が有効か確認済み
-        await _pdfService.GenerateShiftPdfAsync(accepted.ShiftDay.RecruitmentPeriodId);
+        await _pdfService.GenerateShiftPdfAsync(recruitmentPeriodId);
         return RedirectToAction(nameof(Index));
     }
 
@@ -278,18 +286,38 @@ public class ExchangeController : Controller
 
     public async Task<IActionResult> Index()
     {
-        var exchanges = await _context.ShiftExchanges
+        var currentUserId = HttpContext.Session.GetString("UserId");
+        if (string.IsNullOrEmpty(currentUserId)) return RedirectToAction("Login", "Account");
+
+        var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == currentUserId);
+        var isAdmin = currentUser?.IsAdmin ?? false;
+
+        var query = _context.ShiftExchanges
             .Include(e => e.RequestedByUser)
             .Include(e => e.AcceptedByUser)
+            .Include(e => e.TargetUser)
             .Include(e => e.OfferedShiftSubmission)
                 .ThenInclude(s => s.ShiftDay)
             .Include(e => e.AcceptedShiftSubmission)
-                .ThenInclude(s => s.ShiftDay)
+                .ThenInclude(s => s!.ShiftDay)
+            .AsQueryable();
+
+        if (!isAdmin)
+        {
+            query = query.Where(e =>
+                e.TargetUserId == null ||
+                e.TargetUserId == currentUserId ||
+                e.RequestedByUserId == currentUserId ||
+                e.AcceptedByUserId == currentUserId);
+        }
+
+        var exchanges = await query
+            .OrderByDescending(e => e.UpdatedAt)
             .ToListAsync();
 
-        var currentUserId = HttpContext.Session.GetString("UserId");
-        var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == currentUserId);
+        ViewBag.CurrentUserId = currentUserId;
         ViewBag.CurrentUserRole = currentUser?.UserShiftRole.ToString() ?? "Normal";
+        ViewBag.IsAdmin = isAdmin;
 
         return View(exchanges);
     }
@@ -299,22 +327,25 @@ public class ExchangeController : Controller
     public async Task<IActionResult> Accept(int id, int yourShiftSubmissionId)
     {
         var userId = HttpContext.Session.GetString("UserId");
+        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
 
         var exchange = await _context.ShiftExchanges
             .Include(e => e.OfferedShiftSubmission)
             .FirstOrDefaultAsync(e => e.Id == id);
 
-        if (exchange == null || exchange.AcceptedShiftSubmissionId != null || exchange.Status != "Open")
+        if (exchange == null || !IsOpenStatus(exchange.Status))
             return NotFound();
 
         if (exchange.RequestedByUserId == userId)
             return BadRequest("自分の交換リクエストには応募できません。");
 
-        exchange.AcceptedShiftSubmissionId = yourShiftSubmissionId;
+        if (!string.IsNullOrEmpty(exchange.TargetUserId) && exchange.TargetUserId != userId)
+            return BadRequest("この交換募集は指定されたユーザーだけが応募できます。");
+
         exchange.AcceptedByUserId = userId;
         exchange.AcceptedAt = DateTime.UtcNow;
         exchange.UpdatedAt = DateTime.UtcNow;
-        exchange.Status = "Accepted";
+        exchange.Status = ShiftExchange.StatusPendingApproval;
 
         _context.ShiftExchanges.Update(exchange);
         await _context.SaveChangesAsync();

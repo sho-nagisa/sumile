@@ -47,6 +47,16 @@ namespace sumile.Controllers
             HttpContext.Session.SetString("IsAdmin", isAdmin.ToString());
             return isAdmin;
         }
+
+        private static string GetShiftCellKey(string userId, int shiftDayId, ShiftType shiftType)
+        {
+            return $"{userId}_{shiftDayId}_{(int)shiftType}";
+        }
+
+        private static bool IsSelectedState(ShiftState state)
+        {
+            return state != ShiftState.None && state != ShiftState.NotAccepted;
+        }
         
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
@@ -144,6 +154,38 @@ namespace sumile.Controllers
                 .Where(l => !periodId.HasValue || l.ShiftDay.RecruitmentPeriodId == periodId)
                 .OrderByDescending(l => l.EditDate)
                 .ToListAsync();
+
+            var logShiftDayIds = logs
+                .Select(l => l.ShiftDayId)
+                .Distinct()
+                .ToList();
+
+            var backups = await _context.SubmitBackups
+                .Where(b => logShiftDayIds.Contains(b.ShiftDayId))
+                .ToListAsync();
+
+            var initialStateByKey = backups
+                .GroupBy(b => GetShiftCellKey(b.UserId, b.ShiftDayId, b.ShiftType))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(b => b.BackedUpAt).First().ShiftStatus);
+
+            var currentSubmissions = await _context.ShiftSubmissions
+                .Where(s => logShiftDayIds.Contains(s.ShiftDayId))
+                .ToListAsync();
+
+            var currentStateByKey = currentSubmissions
+                .GroupBy(s => GetShiftCellKey(s.UserId, s.ShiftDayId, s.ShiftType))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .OrderByDescending(s => s.SubmittedAt ?? DateTime.MinValue)
+                        .ThenByDescending(s => s.Id)
+                        .First()
+                        .ShiftStatus);
+
+            ViewBag.InitialStateByKey = initialStateByKey;
+            ViewBag.CurrentStateByKey = currentStateByKey;
 
             return View(logs);
         }
@@ -318,14 +360,23 @@ namespace sumile.Controllers
                     if (!shiftDayDict.TryGetValue(dateUtc, out var shiftDayId))
                         continue;
 
-                    ShiftState newState = shift.ShiftStatus switch
+                    ShiftState newState;
+                    if (shift.ShiftState.HasValue && Enum.IsDefined(typeof(ShiftState), shift.ShiftState.Value))
                     {
-                        "〇" => ShiftState.Accepted,
-                        "△" => ShiftState.WantToGiveAway,
-                        "🔴" => ShiftState.KeyHolder,
-                        ""  => ShiftState.NotAccepted,
-                        _   => ShiftState.None
-                    };
+                        newState = (ShiftState)shift.ShiftState.Value;
+                    }
+                    else
+                    {
+                        newState = shift.ShiftStatus switch
+                        {
+                            "〇" => ShiftState.Accepted,
+                            "△" => ShiftState.WantToGiveAway,
+                            "🔴" => ShiftState.KeyHolder,
+                            "×" => ShiftState.None,
+                            ""  => ShiftState.NotAccepted,
+                            _   => ShiftState.None
+                        };
+                    }
 
 
                     ShiftType shiftType = (ShiftType)shift.ShiftType;
@@ -335,12 +386,13 @@ namespace sumile.Controllers
                         s.ShiftDayId == shiftDayId &&
                         s.ShiftType == shiftType);
 
-                    var existingLogs = await _context.ShiftEditLogs
-                        .Where(log => log.TargetUserId == shift.UserId && log.ShiftDayId == shiftDayId && log.ShiftType == shiftType)
-                        .ToListAsync();
-
                     if (existing == null)
                     {
+                        if (newState == ShiftState.None)
+                        {
+                            continue;
+                        }
+
                         var targetUser = await _userManager.FindByIdAsync(shift.UserId);
                         var userRole = targetUser?.UserShiftRole ?? UserShiftRole.Normal;
 
@@ -349,7 +401,7 @@ namespace sumile.Controllers
                             UserId = shift.UserId,
                             ShiftDayId = shiftDayId,
                             ShiftType = shiftType,
-                            IsSelected = true,
+                            IsSelected = IsSelectedState(newState),
                             SubmittedAt = DateTime.UtcNow,
                             ShiftStatus = newState,
                             UserType = UserType.AdminUpdated,
@@ -371,21 +423,6 @@ namespace sumile.Controllers
                     }
                     else if (existing.ShiftStatus != newState)
                     {
-                        if (!existingLogs.Any())
-                        {
-                            logs.Add(new ShiftEditLog
-                            {
-                                AdminUserId = adminUserId,
-                                TargetUserId = shift.UserId,
-                                ShiftDayId = shiftDayId,
-                                ShiftType = shiftType,
-                                OldState = existing.ShiftStatus,
-                                NewState = existing.ShiftStatus,
-                                EditDate = DateTime.UtcNow,
-                                Note = "（初回ログ）"
-                            });
-                        }
-
                         logs.Add(new ShiftEditLog
                         {
                             AdminUserId = adminUserId,
@@ -399,7 +436,9 @@ namespace sumile.Controllers
                         });
 
                         existing.ShiftStatus = newState;
+                        existing.IsSelected = IsSelectedState(newState);
                         existing.SubmittedAt = DateTime.UtcNow;
+                        existing.UserType = UserType.AdminUpdated;
                         _context.ShiftSubmissions.Update(existing);
                     }
                 }
@@ -438,31 +477,33 @@ namespace sumile.Controllers
                     .Select(d => d.Id)
                     .ToListAsync();
 
-                // ① 既存バックアップを削除（上書き仕様）
+                // ① 既存バックアップは初期提出状態として固定し、上書きしない
                 var existingBackups = await _context.SubmitBackups
                     .Where(b => b.RecruitmentPeriodId == id)
                     .ToListAsync();
 
-                if (existingBackups.Any())
-                {
-                    _context.SubmitBackups.RemoveRange(existingBackups);
-                }
+                var existingBackupKeys = existingBackups
+                    .Select(b => GetShiftCellKey(b.UserId, b.ShiftDayId, b.ShiftType))
+                    .ToHashSet();
 
                 // ② 現在の提出済みシフトを取得
                 var submissions = await _context.ShiftSubmissions
                     .Where(s => shiftDayIds.Contains(s.ShiftDayId))
                     .ToListAsync();
 
-                // ③ Backup 作成
-                var backups = submissions.Select(s => new SubmitBackup
-                {
-                    RecruitmentPeriodId = id,
-                    UserId = s.UserId,
-                    ShiftDayId = s.ShiftDayId,
-                    ShiftType = s.ShiftType,
-                    ShiftStatus = s.ShiftStatus,
-                    BackedUpAt = DateTime.UtcNow
-                }).ToList();
+                // ③ Backup 作成。既存キーは初期状態を守るため再作成しない。
+                var backups = submissions
+                    .Where(s => !existingBackupKeys.Contains(GetShiftCellKey(s.UserId, s.ShiftDayId, s.ShiftType)))
+                    .Select(s => new SubmitBackup
+                    {
+                        RecruitmentPeriodId = id,
+                        UserId = s.UserId,
+                        ShiftDayId = s.ShiftDayId,
+                        ShiftType = s.ShiftType,
+                        ShiftStatus = s.ShiftStatus,
+                        BackedUpAt = DateTime.UtcNow
+                    })
+                    .ToList();
 
                 _context.SubmitBackups.AddRange(backups);
             }
@@ -680,6 +721,7 @@ namespace sumile.Controllers
         public string UserId { get; set; }
         public string Date { get; set; }
         public int ShiftType { get; set; }
+        public int? ShiftState { get; set; }
         public string ShiftStatus { get; set; }
         public int RecruitmentPeriodId { get; set; }
     }

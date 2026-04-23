@@ -3,6 +3,8 @@
 
 @{
     ViewData["Title"] = "シフト交換掲示板";
+    var currentUserId = ViewBag.CurrentUserId as string;
+    var isAdmin = ViewBag.IsAdmin as bool? ?? false;
 }
 
 <h2 class="mb-4">シフト交換掲示板</h2>
@@ -22,8 +24,9 @@
     <thead class="table-light">
         <tr>
             <th>交換提出者</th>
-            <th>交換したいシフト</th>
-            <th>交換希望シフト</th>
+            <th>譲りたいシフト</th>
+            <th>表示先</th>
+            <th>応募者</th>
             <th>ステータス</th>
             <th>操作</th>
         </tr>
@@ -33,15 +36,19 @@
         {
             var offered = item.OfferedShiftSubmission;
             var accepted = item.AcceptedShiftSubmission;
+            var isOwnRequest = item.RequestedByUserId == currentUserId;
+            var isTargetedToOtherUser = !string.IsNullOrEmpty(item.TargetUserId) && item.TargetUserId != currentUserId;
+            var canApply = item.Status == ShiftExchange.StatusOpen && offered != null && !isOwnRequest && !isTargetedToOtherUser;
+            var canFinalize = IsPendingApproval(item.Status) && isAdmin;
 
             // ↓ ShiftDay 経由で取得（ShiftSubmission.Date は使用しない）
             var shiftDateStr = offered?.ShiftDay?.Date.ToString("yyyy-MM-dd") ?? "";
             var shiftTypeInt = (int)(offered?.ShiftType ?? ShiftType.Morning);
             var periodId = offered?.ShiftDay?.RecruitmentPeriodId ?? 0;
-            var targetUserRole = item.RequestedByUser?.UserShiftRole.ToString() ?? "Normal";
+            var targetUserRole = offered?.UserShiftRole.ToString() ?? "Normal";
 
             <tr>
-                <td>@item.RequestedByUser?.Name ?? "―"</td>
+                <td>@(item.RequestedByUser?.Name ?? "―")</td>
 
                 <td>
                     @if (offered != null)
@@ -57,22 +64,41 @@
                 </td>
 
                 <td>
-                    @if (accepted != null)
+                    @if (item.TargetUser != null)
                     {
-                        <span>
-                            @($"{accepted.ShiftDay?.Date:yyyy/MM/dd}（{ConvertShiftType(accepted.ShiftType)}）[{ConvertRoleToLabel(accepted.UserShiftRole)}]")
-                        </span>
+                        <span>@item.TargetUser.Name</span>
                     }
                     else
                     {
-                        <span class="text-muted">&lt;交換未選択&gt;</span>
+                        <span class="text-muted">全員</span>
                     }
                 </td>
 
                 <td>
-                    @if (item.Status == "Accepted")
+                    @if (item.AcceptedByUser != null)
                     {
-                        <span class="badge bg-success">成立済</span>
+                        <span>@item.AcceptedByUser.Name</span>
+                        @if (accepted != null)
+                        {
+                            <span class="text-muted small">
+                                @($" / {accepted.ShiftDay?.Date:yyyy/MM/dd}（{ConvertShiftType(accepted.ShiftType)}）")
+                            </span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="text-muted">未応募</span>
+                    }
+                </td>
+
+                <td>
+                    @if (item.Status == ShiftExchange.StatusFinalized)
+                    {
+                        <span class="badge bg-success">確定</span>
+                    }
+                    else if (IsPendingApproval(item.Status))
+                    {
+                        <span class="badge bg-info text-dark">仮成立</span>
                     }
                     else
                     {
@@ -81,19 +107,27 @@
                 </td>
 
                 <td>
-                    @if (item.Status == "Open" && offered != null)
+                    @if (canApply)
                     {
                         <form asp-action="Select" asp-route-id="@item.Id" method="post" class="d-inline"
                               onsubmit="return checkExchangeCapacity(this, '@shiftDateStr', '@shiftTypeInt', @periodId, '@ViewBag.CurrentUserRole', '@targetUserRole');">
                             <button type="submit" class="btn btn-sm btn-outline-primary">この交換に応募</button>
                         </form>
                     }
-                    else if (item.Status == "Accepted" && accepted != null)
+                    else if (canFinalize)
                     {
                         <form asp-action="FinalizeExchange" method="post" class="d-inline">
                             <input type="hidden" name="exchangeId" value="@item.Id" />
-                            <button type="submit" class="btn btn-sm btn-success">反映</button>
+                            <button type="submit" class="btn btn-sm btn-success">確定する</button>
                         </form>
+                    }
+                    else if (IsPendingApproval(item.Status))
+                    {
+                        <span class="text-muted">管理者承認待ち</span>
+                    }
+                    else if (isOwnRequest && item.Status == ShiftExchange.StatusOpen)
+                    {
+                        <span class="text-muted">応募待ち</span>
                     }
                     else
                     {
@@ -125,6 +159,12 @@
             ShiftType.Night => "夜",
             _ => "？"
         };
+    }
+
+    bool IsPendingApproval(string status)
+    {
+        return status == ShiftExchange.StatusPendingApproval ||
+               status == ShiftExchange.StatusAcceptedLegacy;
     }
 }
 

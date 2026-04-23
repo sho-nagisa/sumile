@@ -42,8 +42,10 @@
 
 <div class="text-muted small mb-2">
     表上段の数値は必要枚数です。下段の必要人数・残りは人数で表示しています。
+    黄色のセルは、締切時に保存した初期提出状態から変更されています。
 </div>
 
+<div class="shift-table-fit">
 <table class="table table-bordered table-sm text-center align-middle">
     <thead>
         <tr>
@@ -102,22 +104,20 @@
                         b.ShiftDayId == column.ShiftDayId &&
                         b.ShiftType == column.ShiftType);
 
-                    bool isDiff = backup != null && backup.ShiftStatus != state;
+                    var initialState = backup?.ShiftStatus ?? ShiftState.None;
+                    bool isDiff = initialState != state;
 
-                    string display = state switch
-                    {
-                        ShiftState.Accepted => "〇",
-                        ShiftState.NotAccepted => "",
-                        ShiftState.WantToGiveAway => "△",
-                        ShiftState.KeyHolder => "🔴",
-                        _ => "×"
-                    };
+                    string display = ConvertStateToSymbol(state);
+                    string cellTitle = $"初期: {ConvertStateToLabel(initialState)} / 編集前: {ConvertStateToLabel(state)} / 現在: {ConvertStateToLabel(state)}";
 
                     <td class="editable-cell @(isDiff ? "bg-warning" : "")"
                         data-user="@user.Id"
                         data-day="@column.Date.ToString("yyyy-MM-dd")"
                         data-type="@((int)column.ShiftType)"
-                        data-state="@((int)state)">
+                        data-state="@((int)state)"
+                        data-initial-state="@((int)initialState)"
+                        data-original-state="@((int)state)"
+                        title="@cellTitle">
                         @display
                     </td>
                 }
@@ -157,10 +157,37 @@
         </tr>
     </tfoot>
 </table>
+</div>
 
 <button id="saveBtn" class="btn btn-primary mt-3">保存</button>
 <a asp-controller="Admin" asp-action="Index" asp-route-periodId="@selectedPeriodId"
    class="btn btn-secondary mt-3 ms-2">保存せずに戻る</a>
+
+@functions {
+    string ConvertStateToSymbol(ShiftState state)
+    {
+        return state switch
+        {
+            ShiftState.Accepted => "〇",
+            ShiftState.NotAccepted => "",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.KeyHolder => "🔴",
+            _ => "×"
+        };
+    }
+
+    string ConvertStateToLabel(ShiftState state)
+    {
+        return state switch
+        {
+            ShiftState.Accepted => "〇",
+            ShiftState.NotAccepted => "空白",
+            ShiftState.WantToGiveAway => "△",
+            ShiftState.KeyHolder => "赤丸",
+            _ => "×"
+        };
+    }
+}
 
 @section Scripts {
 <script>
@@ -174,12 +201,33 @@
 
     const requiredByCol = requiredTds.map(td => parseInt(td.innerText || "0", 10));
 
+    function symbolFromState(state) {
+        return state == 1 ? "〇" :
+            state == 2 ? "" :
+            state == 3 ? "△" :
+            state == 4 ? "🔴" : "×";
+    }
+
+    function labelFromState(state) {
+        return state == 1 ? "〇" :
+            state == 2 ? "空白" :
+            state == 3 ? "△" :
+            state == 4 ? "赤丸" : "×";
+    }
+
+    function updateCellMeta(cell) {
+        const initial = parseInt(cell.dataset.initialState || "0", 10);
+        const original = parseInt(cell.dataset.originalState || "0", 10);
+        const current = parseInt(cell.dataset.state || "0", 10);
+
+        cell.title = `初期: ${labelFromState(initial)} / 編集前: ${labelFromState(original)} / 現在: ${labelFromState(current)}`;
+        cell.classList.toggle("bg-warning", initial !== current);
+    }
+
     function render(cell, state) {
         cell.dataset.state = state;
-        cell.innerText =
-            state == 1 ? "〇" :
-            state == 3 ? "△" :
-            state == 4 ? "🔴" : "";
+        cell.innerText = symbolFromState(state);
+        updateCellMeta(cell);
     }
 
     function nextLeft(state) {
@@ -222,6 +270,8 @@
     }
 
     cells.forEach(cell => {
+        updateCellMeta(cell);
+
         cell.addEventListener("click", () => {
             const s = parseInt(cell.dataset.state);
             render(cell, nextLeft(s));
@@ -245,10 +295,12 @@
                 userId: cell.dataset.user,
                 date: cell.dataset.day,
                 shiftType: parseInt(cell.dataset.type),
+                shiftState: parseInt(cell.dataset.state),
                 shiftStatus:
                     cell.dataset.state == 1 ? "〇" :
                     cell.dataset.state == 3 ? "△" :
-                    cell.dataset.state == 4 ? "🔴" : ""
+                    cell.dataset.state == 4 ? "🔴" :
+                    cell.dataset.state == 0 ? "×" : ""
             });
         });
 

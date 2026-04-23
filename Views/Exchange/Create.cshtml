@@ -2,6 +2,7 @@
 @{
     ViewData["Title"] = "シフト交換希望を出す";
     var shiftsByPeriod = ViewBag.ShiftsByPeriod as Dictionary<RecruitmentPeriod, List<ShiftSubmission>> ?? new();
+    var targetUsers = ViewBag.TargetUsers as List<ApplicationUser> ?? new();
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -60,6 +61,17 @@
                 </div>
                 <div class="modal-body">
                     <p id="confirmText"></p>
+                    <div class="mb-3">
+                        <label for="targetUserId" class="form-label">表示先ユーザー</label>
+                        <select name="targetUserId" id="targetUserId" class="form-select">
+                            <option value="">全員に表示</option>
+                            @foreach (var user in targetUsers)
+                            {
+                                <option value="@user.Id">@user.CustomId: @user.Name</option>
+                            }
+                        </select>
+                        <div class="form-text">特定の人へ譲りたい場合は、その人だけを選んでください。</div>
+                    </div>
                     <input type="hidden" name="offeredShiftSubmissionId" id="modalShiftId" />
                     <input type="hidden" name="shiftDayId" id="modalShiftDayId" />
                     <input type="hidden" name="shiftType" id="modalShiftType" />
