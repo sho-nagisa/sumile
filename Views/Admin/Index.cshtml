@@ -1,9 +1,11 @@
-﻿@using System.Globalization
+@using System.Globalization
 @using sumile.Models
 @using sumile.Services
+@inject ShiftStatusDisplayService ShiftDisplay
 
 @{
     ViewData["Title"] = "シフト一覧(管理者用)";
+
     var workloads = (ViewBag.Workloads as IEnumerable<DailyWorkload>)?.ToList()
                     ?? new List<DailyWorkload>();
     var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
@@ -13,7 +15,7 @@
     var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
     var workloadCells = ViewBag.WorkloadCells as List<ShiftTableWorkloadCell> ?? new List<ShiftTableWorkloadCell>();
     var shiftColumns = ViewBag.ShiftColumns as List<ShiftTableColumn> ?? new List<ShiftTableColumn>();
-    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();// 変更点ハイライト用（現状は未使用で後付けの表示用）
+    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();
     var totalAcceptedList = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
     var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
     var requiredWorkersList = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
@@ -28,7 +30,7 @@
     <a href="@Url.Action("ShiftEditLogs", "Admin")" class="btn btn-info">編集履歴</a>
 
     <form asp-action="AutoAssignShifts" asp-controller="Admin" method="post" style="display:inline;">
-        <input type="hidden" name="periodId" value="@ViewBag.SelectedPeriodId" />
+        <input type="hidden" name="periodId" value="@selectedPeriodId" />
         <button type="submit" class="btn btn-warning" onclick="return confirm('この期間のシフトを自動割り当てしますか？');">
             シフト自動割り当て
         </button>
@@ -73,15 +75,17 @@
 
 <script>
     document.getElementById('periodSelect')?.addEventListener('change', function () {
-        var pid = this.value;
-        window.location.href = '@Url.Action("Index", "Admin")?periodId=' + pid;
+        location.href = '@Url.Action("Index", "Admin")?periodId=' + this.value;
     });
 </script>
 
 <style>
-    .highlight-cell {
-        background-color: #fff2ab !important;
-    }
+    .current-user-row { background-color: #f3e8ff; }
+    .shift-none { color: gray; }
+    .shift-accepted { color: black; }
+    .shift-want { color: orange; }
+    .shift-keyholder { color: red; }
+    .highlight-cell { background-color: #fff3cd; }
 </style>
 
 <div class="text-muted small mb-2">
@@ -93,7 +97,7 @@
     <thead>
         <tr>
             <th rowspan="4">ユーザー</th>
-            <th rowspan="4">鍵持ちOK</th>
+            <th rowspan="4">鍵</th>
             @foreach (var day in shiftDays)
             {
                 <th colspan="2">@day.Date.ToString("M/d")</th>
@@ -106,7 +110,7 @@
             }
         </tr>
         <tr>
-            @foreach (var day in shiftDays)
+            @foreach (var _ in shiftDays)
             {
                 <th>上</th>
                 <th>敷</th>
@@ -119,18 +123,17 @@
             }
         </tr>
     </thead>
+
     <tbody>
         @foreach (var user in users)
         {
             bool isCurrentUser =
                 ViewBag.CurrentUserCustomId != null &&
                 user.CustomId.ToString() == ViewBag.CurrentUserCustomId;
-            <tr>
+
+            <tr class="@(isCurrentUser ? "current-user-row" : "")">
                 <td>@user.Name</td>
-                @{
-                    var hasKeyHolder = user.UserShiftRole == UserShiftRole.KeyHolder;
-                }
-                <td>@(hasKeyHolder ? "★" : "")</td>
+                <td>@(user.UserShiftRole == UserShiftRole.KeyHolder ? "★" : "")</td>
 
                 @foreach (var column in shiftColumns)
                 {
@@ -140,14 +143,17 @@
                         s.ShiftType == column.ShiftType);
 
                     var key = $"{user.Id}_{column.ShiftDayId}_{(int)column.ShiftType}";
-                    string cellClass = diffKeys.Contains(key) ? "highlight-cell" : "";
-                    string symbol = ConvertStateToColoredSymbol(submission?.ShiftStatus, submission?.UserShiftRole);
+                    var display = ShiftDisplay.GetDisplay(submission?.ShiftStatus);
 
-                    <td class="@cellClass">@Html.Raw(symbol)</td>
+                    if (submission?.UserShiftRole == UserShiftRole.KeyHolder && display.Symbol == "〇")
+                        display.CssClass += " shift-keyholder";
+
+                    <td class="@(diffKeys.Contains(key) ? "highlight-cell" : "") @display.CssClass">
+                        @display.Symbol
+                    </td>
                 }
             </tr>
         }
-
     </tbody>
 
     <tfoot>
@@ -160,13 +166,12 @@
         </tr>
 
         <tr>
-            <td colspan="2">〇の数</td>
+            <td colspan="2">〇</td>
             @foreach (var v in totalAcceptedList)
             {
                 <td>@v</td>
             }
         </tr>
-
         <tr>
             <td colspan="2">赤丸</td>
             @foreach (var v in keyHolderAcceptedList)
@@ -174,7 +179,6 @@
                 <td>@v</td>
             }
         </tr>
-
         <tr>
             <td colspan="2">残り</td>
             @foreach (var v in remainingWorkersList)
@@ -185,29 +189,3 @@
     </tfoot>
 </table>
 </div>
-
-@functions {
-    string ConvertStateToColoredSymbol(ShiftState? state, UserShiftRole? role)
-    {
-        if (state == ShiftState.KeyHolder)
-            return "<span style='color:red;'>〇</span>";
-
-        string baseSymbol = state switch
-        {
-            ShiftState.Accepted => "〇",
-            ShiftState.WantToGiveAway => "△",
-            ShiftState.NotAccepted => "",
-            _ => "×"
-        };
-
-        if (baseSymbol != "〇") return baseSymbol;
-
-        return role switch
-        {
-            UserShiftRole.KeyHolder => "<span style='color:red;'>〇</span>",
-            UserShiftRole.Normal => "<span style='color:black;'>〇</span>",
-            UserShiftRole.New => "<span style='color:gray;'>〇</span>",
-            _ => baseSymbol
-        };
-    }
-}
