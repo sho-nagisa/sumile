@@ -10,10 +10,10 @@ namespace sumile.Models
         public DateTime Date { get; set; }
 
         public int RecruitmentPeriodId { get; set; }
-        public RecruitmentPeriod RecruitmentPeriod { get; set; }
+        public RecruitmentPeriod RecruitmentPeriod { get; set; } = null!;
 
-        public ICollection<ShiftSubmission> ShiftSubmissions { get; set; }
-        public DailyWorkload DailyWorkload { get; set; }
+        public ICollection<ShiftSubmission> ShiftSubmissions { get; set; } = new List<ShiftSubmission>();
+        public DailyWorkload DailyWorkload { get; set; } = null!;
     }
 
 }

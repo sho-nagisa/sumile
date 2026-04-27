@@ -11,12 +11,12 @@ namespace sumile.Models
 
         /// <summary>紐づくシフトID (FK: Shift.Id)</summary>
         public int ShiftId { get; set; }
-        public Shift Shift { get; set; }
+        public Shift Shift { get; set; } = null!;
 
         /// <summary>紐づくユーザーID (FK: AspNetUsers.Id)</summary>
-        public string UserId { get; set; }
+        public string UserId { get; set; } = string.Empty;
         // ApplicationUserを参照する場合は型をApplicationUserに
-        public ApplicationUser User { get; set; }
+        public ApplicationUser User { get; set; } = null!;
 
         /// <summary>割り当てられた日時など</summary>
         public DateTime AssignedAt { get; set; } = DateTime.Now;

@@ -20,7 +20,7 @@ namespace sumile.Services
             return await _context.Shifts.ToListAsync();
         }
 
-        public async Task<Shift> GetShiftByIdAsync(int id)
+        public async Task<Shift?> GetShiftByIdAsync(int id)
         {
             return await _context.Shifts.FindAsync(id);
         }

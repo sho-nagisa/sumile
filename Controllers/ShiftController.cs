@@ -261,7 +261,7 @@ namespace sumile.Controllers
                 .OrderByDescending(p => p.StartDate)
                 .ToListAsync();
 
-            RecruitmentPeriod selectedPeriod = null;
+            RecruitmentPeriod? selectedPeriod = null;
             if (periodId.HasValue)
             {
                 selectedPeriod = openPeriods.FirstOrDefault(p => p.Id == periodId);
@@ -326,8 +326,8 @@ namespace sumile.Controllers
     }
     public class ShiftSubmissionViewModel
     {
-        public string Date { get; set; }
+        public string Date { get; set; } = string.Empty;
         public ShiftType ShiftType { get; set; }
-        public string ShiftSymbol { get; set; }
+        public string ShiftSymbol { get; set; } = string.Empty;
     }
 }

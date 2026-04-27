@@ -14,7 +14,7 @@ namespace sumile.Models
         public DateTime Date { get; set; }
 
         /// <summary>シフトの種類 ("Morning", "Night" など)</summary>
-        public string ShiftType { get; set; }
+        public string ShiftType { get; set; } = string.Empty;
 
         /// <summary>最大人数 (例: 6 or 7)</summary>
         public int MaxCapacity { get; set; } = 6;

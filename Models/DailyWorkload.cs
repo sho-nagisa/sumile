@@ -12,7 +12,7 @@ public class DailyWorkload
     public int ShiftDayId { get; set; }
 
     [ForeignKey("ShiftDayId")]
-    public ShiftDay ShiftDay { get; set; }
+    public ShiftDay ShiftDay { get; set; } = null!;
 
     // 現場で入力する「必要枚数」。人数ではない。
     [Required]

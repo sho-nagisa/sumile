@@ -20,9 +20,9 @@ namespace sumile.Models
         public ApplicationUser? TargetUser { get; set; }
 
         [Required]
-        public string RequestedByUserId { get; set; }
+        public string RequestedByUserId { get; set; } = string.Empty;
         [ForeignKey("RequestedByUserId")]
-        public ApplicationUser RequestedByUser { get; set; }
+        public ApplicationUser RequestedByUser { get; set; } = null!;
 
         public string? AcceptedByUserId { get; set; }
         [ForeignKey("AcceptedByUserId")]
@@ -30,7 +30,7 @@ namespace sumile.Models
 
         public int OfferedShiftSubmissionId { get; set; }
         [ForeignKey("OfferedShiftSubmissionId")]
-        public ShiftSubmission OfferedShiftSubmission { get; set; }
+        public ShiftSubmission OfferedShiftSubmission { get; set; } = null!;
 
         public int? AcceptedShiftSubmissionId { get; set; }
         [ForeignKey("AcceptedShiftSubmissionId")]
@@ -41,6 +41,6 @@ namespace sumile.Models
         public DateTime UpdatedAt { get; set; }
 
         [Required]
-        public string Status { get; set; }
+        public string Status { get; set; } = string.Empty;
     }
 }

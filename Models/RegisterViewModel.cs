@@ -6,18 +6,18 @@ namespace sumile.Models
     {
         [Required]
         [Display(Name = "名前")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         public int CustomId { get; set; } // 参照はないが自動割当のため消したらだめ
 
         [Required]
         [DataType(DataType.Password)]
         [Display(Name = "パスワード")]
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
 
         [DataType(DataType.Password)]
         [Display(Name = "パスワード確認")]
         [Compare("Password", ErrorMessage = "パスワードが一致しません。")]
-        public string ConfirmPassword { get; set; }
+        public string ConfirmPassword { get; set; } = string.Empty;
     }
 }

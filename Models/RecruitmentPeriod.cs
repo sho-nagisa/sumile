@@ -14,6 +14,6 @@ namespace sumile.Models
         [Display(Name = "募集終了日")]
         public DateTime EndDate { get; set; }
         public bool IsOpen { get; set; } = true;
-        public ICollection<ShiftDay> ShiftDays { get; set; }
+        public ICollection<ShiftDay> ShiftDays { get; set; } = new List<ShiftDay>();
     }
 }

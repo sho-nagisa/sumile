@@ -9,12 +9,12 @@ namespace sumile.Models
 
         // 新構造：ShiftDay 経由で日付と期間を管理
         public int ShiftDayId { get; set; }
-        public ShiftDay ShiftDay { get; set; }
+        public ShiftDay ShiftDay { get; set; } = null!;
 
         public ShiftType ShiftType { get; set; }
 
-        public string UserId { get; set; }
-        public ApplicationUser User { get; set; }
+        public string UserId { get; set; } = string.Empty;
+        public ApplicationUser User { get; set; } = null!;
 
         public ShiftState ShiftStatus { get; set; }
 

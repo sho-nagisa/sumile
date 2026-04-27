@@ -7,7 +7,7 @@ namespace sumile.Services
     public interface IShiftService
     {
         Task<IEnumerable<Shift>> GetAllShiftsAsync();
-        Task<Shift> GetShiftByIdAsync(int id);
+        Task<Shift?> GetShiftByIdAsync(int id);
         Task CreateShiftAsync(Shift shift);
         Task UpdateShiftAsync(Shift shift);
         Task DeleteShiftAsync(int id);

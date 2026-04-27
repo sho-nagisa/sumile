@@ -898,11 +898,11 @@ namespace sumile.Controllers
 
     public class ShiftUpdateModel
     {
-        public string UserId { get; set; }
-        public string Date { get; set; }
+        public string UserId { get; set; } = string.Empty;
+        public string Date { get; set; } = string.Empty;
         public int ShiftType { get; set; }
         public int? ShiftState { get; set; }
-        public string ShiftStatus { get; set; }
+        public string ShiftStatus { get; set; } = string.Empty;
         public int RecruitmentPeriodId { get; set; }
     }
 }

@@ -85,14 +85,14 @@ namespace sumile.Controllers
 
         // ========== ログイン ==========
         [HttpGet]
-        public IActionResult Login(string returnUrl = null)
+        public IActionResult Login(string? returnUrl = null)
         {
             ViewData["ReturnUrl"] = returnUrl;
             return View();
         }
 
         [HttpPost]
-        public async Task<IActionResult> Login(LoginViewModel model, string returnUrl = null)
+        public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
         {
             ViewData["ReturnUrl"] = returnUrl;
 
@@ -111,7 +111,7 @@ namespace sumile.Controllers
 
             // ★ ロックアウト対応：失敗時にカウント、ロック状態も確認
             var result = await _signInManager.PasswordSignInAsync(
-                user.UserName, model.Password, model.RememberMe, lockoutOnFailure: true);
+                user, model.Password, model.RememberMe, lockoutOnFailure: true);
 
             if (result.Succeeded)
             {

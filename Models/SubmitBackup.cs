@@ -17,7 +17,7 @@ namespace sumile.Models
         public int RecruitmentPeriodId { get; set; }
 
         /// 対象ユーザーID
-        public string UserId { get; set; }
+        public string UserId { get; set; } = string.Empty;
         /// シフト日ID
         public int ShiftDayId { get; set; }
         /// シフトタイプ（上／敷）
