@@ -20,6 +20,10 @@
     var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
     var requiredWorkersList = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
     var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
+    var shiftPdfUrl = ViewBag.ShiftPdfUrl as string;
+    DateTime? shiftPdfUpdatedAt = ViewBag.ShiftPdfUpdatedAt is DateTime pdfUpdatedAt
+        ? pdfUpdatedAt
+        : null;
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -41,6 +45,7 @@
     @if (selectedPeriodId != null)
     {
         <form asp-action="RegeneratePdf" asp-controller="Admin" method="post" style="display:inline;">
+            @Html.AntiForgeryToken()
             <input type="hidden" name="periodId" value="@selectedPeriodId" />
             <button type="submit" class="btn btn-outline-dark">この期間のPDFを今すぐ再出力</button>
         </form>
@@ -70,6 +75,38 @@
                 </button>
             </form>
         }
+    }
+</div>
+
+<div class="admin-pdf-preview mb-4">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <div>
+            <h3 class="h5 mb-1">最新PDF</h3>
+            @if (shiftPdfUpdatedAt.HasValue)
+            {
+                <div class="text-muted small">更新: @shiftPdfUpdatedAt.Value.ToString("yyyy/MM/dd HH:mm")</div>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(shiftPdfUrl))
+        {
+            <a href="@shiftPdfUrl" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">別タブで開く</a>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(shiftPdfUrl))
+    {
+        <object data="@shiftPdfUrl" type="application/pdf" class="admin-pdf-frame">
+            <div class="text-muted small">
+                PDFを表示できませんでした。<a href="@shiftPdfUrl" target="_blank" rel="noopener">別タブで開く</a>
+            </div>
+        </object>
+    }
+    else
+    {
+        <div class="admin-pdf-empty text-muted">
+            この期間のPDFはまだ出力されていません。
+        </div>
     }
 </div>
 

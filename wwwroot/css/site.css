@@ -21,6 +21,27 @@ body {
   margin-bottom: 60px;
 }
 
+.admin-pdf-preview {
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 1rem;
+  background: #fff;
+}
+
+.admin-pdf-frame {
+  width: 100%;
+  height: 680px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.admin-pdf-empty {
+  border: 1px dashed #ced4da;
+  border-radius: 4px;
+  padding: 2rem;
+  text-align: center;
+}
+
 .shift-table-fit {
   width: 100%;
   overflow: hidden;
@@ -45,5 +66,9 @@ body {
   .shift-table-fit > table td {
     padding: 0.25rem;
     white-space: nowrap;
+  }
+
+  .admin-pdf-frame {
+    height: 520px;
   }
 }

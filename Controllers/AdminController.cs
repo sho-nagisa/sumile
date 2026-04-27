@@ -76,6 +76,9 @@ namespace sumile.Controllers
                 TempData["Error"] = "募集期間が選択されていません。";
                 return RedirectToAction("SetRecruitmentPeriod");
             }
+
+            var selectedPeriodIdValue = selectedPeriod.Id;
+
             ViewBag.Users = await _context.Users
                 .OrderBy(u => u.CustomId)
                 .Select(u => new
@@ -89,7 +92,7 @@ namespace sumile.Controllers
 
 
             // ===== ★ ここから Service 利用 =====
-            var table = await _shiftTableService.BuildAsync(periodId);
+            var table = await _shiftTableService.BuildAsync(selectedPeriodIdValue);
             var shiftDayIds = table.ShiftDays.Select(d => d.Id).ToList();
             var diffLogs = await _context.ShiftEditLogs
                 .Where(log => shiftDayIds.Contains(log.ShiftDayId))
@@ -118,7 +121,16 @@ namespace sumile.Controllers
 
             // ===== その他 View 用データ =====
             ViewBag.RecruitmentPeriods = allPeriods;
-            ViewBag.SelectedPeriodId = selectedPeriod?.Id;
+            ViewBag.SelectedPeriodId = selectedPeriodIdValue;
+
+            var pdfUrl = await _pdfService.EnsureShiftPdfAsync(selectedPeriodIdValue);
+            var pdfPath = _pdfService.GetShiftPdfPhysicalPath(selectedPeriodIdValue);
+            if (System.IO.File.Exists(pdfPath))
+            {
+                var updatedAt = System.IO.File.GetLastWriteTime(pdfPath);
+                ViewBag.ShiftPdfUrl = $"{pdfUrl}?v={updatedAt.Ticks}";
+                ViewBag.ShiftPdfUpdatedAt = updatedAt;
+            }
 
             return View();
         }
@@ -633,6 +645,7 @@ namespace sumile.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await _pdfService.GenerateShiftPdfAsync(periodId);
             TempData["Message"] = "保存しました。";
 
             return redirectTo == "view"
