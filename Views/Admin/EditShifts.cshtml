@@ -60,6 +60,7 @@
         <tr>
             <th rowspan="4">ID</th>
             <th rowspan="4">名前</th>
+            <th rowspan="4">通過率</th>
             @foreach (var day in shiftDays)
             {
                 <th colspan="2">@day.Date.ToString("M/d")</th>
@@ -89,6 +90,19 @@
     <tbody>
         @foreach (var user in users)
         {
+            var userId = (string)user.Id;
+            var userShiftStates = shiftColumns
+                .Select(column => submissions.FirstOrDefault(s =>
+                    s.UserId == userId &&
+                    s.ShiftDayId == column.ShiftDayId &&
+                    s.ShiftType == column.ShiftType)?.ShiftStatus ?? ShiftState.None)
+                .ToList();
+            var submittedCount = userShiftStates.Count(state => state != ShiftState.None);
+            var acceptedCount = userShiftStates.Count(state => state == ShiftState.Accepted || state == ShiftState.KeyHolder);
+            var passRateText = submittedCount == 0
+                ? "-"
+                : $"{acceptedCount}/{submittedCount} ({Math.Round(acceptedCount * 100.0 / submittedCount):0}%)";
+
             <tr>
                 <td>@user.CustomId</td>
                 <td>
@@ -98,18 +112,19 @@
                         <span class="text-warning ms-1">★</span>
                     }
                 </td>
+                <td class="shift-pass-rate text-nowrap small" data-user-rate="@userId">@passRateText</td>
 
                 @foreach (var column in shiftColumns)
                 {
                     var current = submissions.FirstOrDefault(s =>
-                        s.UserId == user.Id &&
+                        s.UserId == userId &&
                         s.ShiftDayId == column.ShiftDayId &&
                         s.ShiftType == column.ShiftType);
 
                     var state = current?.ShiftStatus ?? ShiftState.None;
 
                     var backup = backups.FirstOrDefault(b =>
-                        b.UserId == user.Id &&
+                        b.UserId == userId &&
                         b.ShiftDayId == column.ShiftDayId &&
                         b.ShiftType == column.ShiftType);
 
@@ -120,7 +135,7 @@
                     string cellTitle = $"初期: {ConvertStateToLabel(initialState)} / 編集前: {ConvertStateToLabel(state)} / 現在: {ConvertStateToLabel(state)}";
 
                     <td class="editable-cell @(isDiff ? "bg-warning" : "")"
-                        data-user="@user.Id"
+                        data-user="@userId"
                         data-day="@column.Date.ToString("yyyy-MM-dd")"
                         data-type="@((int)column.ShiftType)"
                         data-state="@((int)state)"
@@ -136,7 +151,7 @@
 
     <tfoot>
         <tr>
-            <td colspan="2">必要人数</td>
+            <td colspan="3">必要人数</td>
             @for (int i = 0; i < requiredWorkers.Count; i++)
             {
                 <td data-foot="required" data-idx="@i">@requiredWorkers[i]</td>
@@ -144,21 +159,21 @@
         </tr>
 
         <tr>
-            <td colspan="2">〇</td>
+            <td colspan="3">〇</td>
             @for (int i = 0; i < totalAccepted.Count; i++)
             {
                 <td data-foot="accepted" data-idx="@i">@totalAccepted[i]</td>
             }
         </tr>
         <tr>
-            <td colspan="2">🔴</td>
+            <td colspan="3">🔴</td>
             @for (int i = 0; i < keyAccepted.Count; i++)
             {
                 <td data-foot="key" data-idx="@i">@keyAccepted[i]</td>
             }
         </tr>
         <tr>
-            <td colspan="2">残り</td>
+            <td colspan="3">残り</td>
             @for (int i = 0; i < remaining.Count; i++)
             {
                 <td data-foot="remain" data-idx="@i" class="@(remaining[i] < 0 ? "text-danger fw-bold" : "")">@remaining[i]</td>
@@ -210,6 +225,8 @@
 @section Scripts {
 <script>
     const cells = document.querySelectorAll(".editable-cell");
+    const fixedColumnCount = 3;
+    const passRateTds = [...document.querySelectorAll(".shift-pass-rate")];
     const acceptedTds = [...document.querySelectorAll('[data-foot="accepted"]')];
     const keyTds = [...document.querySelectorAll('[data-foot="key"]')];
     const requiredTds = [...document.querySelectorAll('[data-foot="required"]')];
@@ -231,6 +248,31 @@
             state == 2 ? "空白" :
             state == 3 ? "△" :
             state == 4 ? "赤丸" : "×";
+    }
+
+    function isSubmittedState(state) {
+        return state !== 0;
+    }
+
+    function isAcceptedState(state) {
+        return state === 1 || state === 4;
+    }
+
+    function formatPassRate(accepted, submitted) {
+        if (submitted === 0) return "-";
+
+        return `${accepted}/${submitted} (${Math.round(accepted * 100 / submitted)}%)`;
+    }
+
+    function recalcPassRates() {
+        passRateTds.forEach(td => {
+            const rowCells = [...td.closest("tr").querySelectorAll(".editable-cell")];
+            const submitted = rowCells.filter(cell => isSubmittedState(parseInt(cell.dataset.state || "0", 10))).length;
+            const accepted = rowCells.filter(cell => isAcceptedState(parseInt(cell.dataset.state || "0", 10))).length;
+
+            td.innerText = formatPassRate(accepted, submitted);
+            td.classList.toggle("text-muted", submitted === 0);
+        });
     }
 
     function updateCellMeta(cell) {
@@ -269,7 +311,7 @@
         const key = new Array(keyTds.length).fill(0);
 
         cells.forEach(cell => {
-            const col = cell.cellIndex - 2;
+            const col = cell.cellIndex - fixedColumnCount;
             if (col < 0 || col >= accepted.length) return;
 
             const state = parseInt(cell.dataset.state);
@@ -294,6 +336,7 @@
             const s = parseInt(cell.dataset.state);
             render(cell, nextLeft(s));
             recalcFooter();
+            recalcPassRates();
         });
 
         cell.addEventListener("contextmenu", e => {
@@ -302,9 +345,12 @@
             if (s !== 2 && s !== 0) {
                 render(cell, nextRight(s));
                 recalcFooter();
+                recalcPassRates();
             }
         });
     });
+
+    recalcPassRates();
 
     document.getElementById("saveBtn").addEventListener("click", async () => {
         const updates = [];
