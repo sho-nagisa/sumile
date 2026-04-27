@@ -2,29 +2,116 @@
 @using sumile.Models
 
 @{
-    ViewData["Title"] = "シフト変更ログ";
+    ViewData["Title"] = "シフト編集ログ";
     var periods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new();
+    var users = ViewBag.Users as List<ApplicationUser> ?? new();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+    var selectedTargetUserId = ViewBag.SelectedTargetUserId as string;
+    var selectedAdminUserId = ViewBag.SelectedAdminUserId as string;
+    var editedFrom = ViewBag.EditedFrom as string;
+    var editedTo = ViewBag.EditedTo as string;
+    var onlyChanged = ViewBag.OnlyChanged as bool? ?? false;
+    var onlyCurrentDiff = ViewBag.OnlyCurrentDiff as bool? ?? false;
     var initialStateByKey = ViewBag.InitialStateByKey as Dictionary<string, ShiftState> ?? new();
     var currentStateByKey = ViewBag.CurrentStateByKey as Dictionary<string, ShiftState> ?? new();
 }
 
 <h2>@ViewData["Title"]</h2>
 
-<form method="get" asp-action="ShiftEditLogs">
-    <label for="periodSelect">募集期間：</label>
-    <select name="periodId" id="periodSelect" onchange="this.form.submit()" class="form-select" style="width:auto; display:inline;">
-        <option value="">すべて</option>
-        @foreach (var period in periods)
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
+<div class="text-muted small mb-3">
+    初期状態は締切時の提出内容です。現在が初期状態と違うセルだけに絞り込めます。
+</div>
+
+<form method="get" asp-action="ShiftEditLogs" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label for="periodId" class="form-label">募集期間</label>
+        <select name="periodId" id="periodId" class="form-select">
+            <option value="">すべて</option>
+            @foreach (var period in periods)
+            {
+                <option value="@period.Id" selected="@(period.Id == selectedPeriodId)">
+                    @period.StartDate.ToString("yyyy/MM/dd") ～ @period.EndDate.ToString("yyyy/MM/dd")
+                </option>
+            }
+        </select>
+    </div>
+
+    <div class="col-auto">
+        <label for="targetUserId" class="form-label">対象ユーザー</label>
+        <select name="targetUserId" id="targetUserId" class="form-select">
+            <option value="">すべて</option>
+            @foreach (var user in users)
+            {
+                <option value="@user.Id" selected="@(user.Id == selectedTargetUserId)">
+                    @($"{user.CustomId}: {user.Name}")
+                </option>
+            }
+        </select>
+    </div>
+
+    <div class="col-auto">
+        <label for="adminUserId" class="form-label">編集者</label>
+        <select name="adminUserId" id="adminUserId" class="form-select">
+            <option value="">すべて</option>
+            @foreach (var user in users.Where(u => u.IsAdmin))
+            {
+                <option value="@user.Id" selected="@(user.Id == selectedAdminUserId)">
+                    @($"{user.CustomId}: {user.Name}")
+                </option>
+            }
+        </select>
+    </div>
+
+    <div class="col-auto">
+        <label for="editedFrom" class="form-label">編集日(開始)</label>
+        <input type="date" id="editedFrom" name="editedFrom" value="@editedFrom" class="form-control" />
+    </div>
+
+    <div class="col-auto">
+        <label for="editedTo" class="form-label">編集日(終了)</label>
+        <input type="date" id="editedTo" name="editedTo" value="@editedTo" class="form-control" />
+    </div>
+
+    <div class="col-auto form-check mt-4">
+        @if (onlyChanged)
         {
-            <option value="@period.Id" selected="@(period.Id == selectedPeriodId)">
-                @period.StartDate.ToString("yyyy/MM/dd") ～ @period.EndDate.ToString("yyyy/MM/dd")
-            </option>
+            <input type="checkbox" class="form-check-input" id="onlyChanged" name="onlyChanged" value="true" checked="checked" />
         }
-    </select>
+        else
+        {
+            <input type="checkbox" class="form-check-input" id="onlyChanged" name="onlyChanged" value="true" />
+        }
+        <label class="form-check-label" for="onlyChanged">変更ありのみ</label>
+    </div>
+
+    <div class="col-auto form-check mt-4">
+        @if (onlyCurrentDiff)
+        {
+            <input type="checkbox" class="form-check-input" id="onlyCurrentDiff" name="onlyCurrentDiff" value="true" checked="checked" />
+        }
+        else
+        {
+            <input type="checkbox" class="form-check-input" id="onlyCurrentDiff" name="onlyCurrentDiff" value="true" />
+        }
+        <label class="form-check-label" for="onlyCurrentDiff">現在が初期状態と違うもののみ</label>
+    </div>
+
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">絞り込む</button>
+    </div>
 </form>
 
-<table class="table table-bordered mt-3">
+<table class="table table-bordered mt-3 align-middle">
     <thead>
         <tr>
             <th>対象ユーザー</th>
@@ -51,14 +138,14 @@
                 : ShiftState.None;
 
             <tr class="@(log.OldState != log.NewState ? "table-warning" : "")">
-                <td>@log.TargetUser?.Name</td>
+                <td>@($"{log.TargetUser?.CustomId}: {log.TargetUser?.Name}")</td>
                 <td>@log.ShiftDay?.Date.ToLocalTime().ToString("yyyy-MM-dd")</td>
-                <td>@log.ShiftType</td>
+                <td>@ConvertShiftTypeToLabel(log.ShiftType)</td>
                 <td>@Html.Raw(ConvertStateToSymbol(initialState))</td>
                 <td>@Html.Raw(ConvertStateToSymbol(log.OldState))</td>
                 <td>@Html.Raw(ConvertStateToSymbol(log.NewState))</td>
                 <td>@Html.Raw(ConvertStateToSymbol(currentState))</td>
-                <td>@log.AdminUser?.Name</td>
+                <td>@($"{log.AdminUser?.CustomId}: {log.AdminUser?.Name}")</td>
                 <td>@log.EditDate.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
                 <td>@log.Note</td>
             </tr>
@@ -75,9 +162,14 @@
         {
             ShiftState.Accepted => "〇",
             ShiftState.WantToGiveAway => "△",
-            ShiftState.NotAccepted => "",
+            ShiftState.NotAccepted => "空白",
             ShiftState.KeyHolder => "<span class=\"text-danger\">〇</span>",
             _ => "×"
         };
+    }
+
+    string ConvertShiftTypeToLabel(ShiftType shiftType)
+    {
+        return shiftType == ShiftType.Morning ? "上" : "敷";
     }
 }

@@ -57,6 +57,64 @@ namespace sumile.Controllers
         {
             return state != ShiftState.None && state != ShiftState.NotAccepted;
         }
+
+        private static ShiftState GetInitialState(
+            IReadOnlyDictionary<string, ShiftState> initialStateByKey,
+            string userId,
+            int shiftDayId,
+            ShiftType shiftType)
+        {
+            return initialStateByKey.TryGetValue(GetShiftCellKey(userId, shiftDayId, shiftType), out var state)
+                ? state
+                : ShiftState.None;
+        }
+
+        private static string ConvertShiftStateToLabel(ShiftState state)
+        {
+            return state switch
+            {
+                ShiftState.Accepted => "〇",
+                ShiftState.NotAccepted => "空白",
+                ShiftState.WantToGiveAway => "△",
+                ShiftState.KeyHolder => "赤丸",
+                _ => "×"
+            };
+        }
+
+        private static string ConvertShiftTypeToLabel(ShiftType shiftType)
+        {
+            return shiftType == ShiftType.Morning ? "上" : "敷";
+        }
+
+        private static string BuildEditLogNote(
+            bool isInitialConfirmation,
+            ShiftState initialState,
+            ShiftState oldState,
+            ShiftState newState,
+            string? reason)
+        {
+            string actionLabel;
+
+            if (isInitialConfirmation)
+            {
+                actionLabel = initialState == ShiftState.None ? "新規作成" : "初回確定";
+            }
+            else if (newState == initialState)
+            {
+                actionLabel = "初期状態に合わせて変更";
+            }
+            else
+            {
+                actionLabel = "変更";
+            }
+
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                return actionLabel;
+            }
+
+            return $"{actionLabel}: {reason.Trim()}";
+        }
         
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
@@ -148,7 +206,14 @@ namespace sumile.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> ShiftEditLogs(int? periodId)
+        public async Task<IActionResult> ShiftEditLogs(
+            int? periodId,
+            string? targetUserId,
+            string? adminUserId,
+            DateTime? editedFrom,
+            DateTime? editedTo,
+            bool onlyChanged = false,
+            bool onlyCurrentDiff = false)
         {
             if (!await IsAdminUser()) return Unauthorized();
 
@@ -156,16 +221,58 @@ namespace sumile.Controllers
                 .OrderByDescending(p => p.Id)
                 .ToListAsync();
 
+            var users = await _context.Users
+                .OrderBy(u => u.CustomId)
+                .ToListAsync();
+
             ViewBag.RecruitmentPeriods = periods;
             ViewBag.SelectedPeriodId = periodId;
+            ViewBag.Users = users;
+            ViewBag.SelectedTargetUserId = targetUserId;
+            ViewBag.SelectedAdminUserId = adminUserId;
+            ViewBag.EditedFrom = editedFrom?.ToString("yyyy-MM-dd");
+            ViewBag.EditedTo = editedTo?.ToString("yyyy-MM-dd");
+            ViewBag.OnlyChanged = onlyChanged;
+            ViewBag.OnlyCurrentDiff = onlyCurrentDiff;
 
-            var logs = await _context.ShiftEditLogs
+            var logQuery = _context.ShiftEditLogs
                 .Include(l => l.AdminUser)
                 .Include(l => l.TargetUser)
                 .Include(l => l.ShiftDay)
-                .Where(l => !periodId.HasValue || l.ShiftDay.RecruitmentPeriodId == periodId)
+                .Where(l => !periodId.HasValue || l.ShiftDay.RecruitmentPeriodId == periodId);
+
+            if (!string.IsNullOrWhiteSpace(targetUserId))
+            {
+                logQuery = logQuery.Where(l => l.TargetUserId == targetUserId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(adminUserId))
+            {
+                logQuery = logQuery.Where(l => l.AdminUserId == adminUserId);
+            }
+
+            if (onlyChanged)
+            {
+                logQuery = logQuery.Where(l => l.OldState != l.NewState);
+            }
+
+            var logs = await logQuery
                 .OrderByDescending(l => l.EditDate)
                 .ToListAsync();
+
+            if (editedFrom.HasValue)
+            {
+                logs = logs
+                    .Where(l => l.EditDate.ToLocalTime().Date >= editedFrom.Value.Date)
+                    .ToList();
+            }
+
+            if (editedTo.HasValue)
+            {
+                logs = logs
+                    .Where(l => l.EditDate.ToLocalTime().Date <= editedTo.Value.Date)
+                    .ToList();
+            }
 
             var logShiftDayIds = logs
                 .Select(l => l.ShiftDayId)
@@ -195,6 +302,19 @@ namespace sumile.Controllers
                         .ThenByDescending(s => s.Id)
                         .First()
                         .ShiftStatus);
+
+            if (onlyCurrentDiff)
+            {
+                logs = logs
+                    .Where(log =>
+                    {
+                        var key = GetShiftCellKey(log.TargetUserId, log.ShiftDayId, log.ShiftType);
+                        var initialState = initialStateByKey.TryGetValue(key, out var initial) ? initial : ShiftState.None;
+                        var currentState = currentStateByKey.TryGetValue(key, out var current) ? current : ShiftState.None;
+                        return currentState != initialState;
+                    })
+                    .ToList();
+            }
 
             ViewBag.InitialStateByKey = initialStateByKey;
             ViewBag.CurrentStateByKey = currentStateByKey;
@@ -294,6 +414,13 @@ namespace sumile.Controllers
                 .Where(b => b.RecruitmentPeriodId == selectedPeriod.Id)
                 .ToListAsync();
 
+            var shiftDayIds = table.ShiftDays
+                .Select(d => d.Id)
+                .ToList();
+
+            var hasInitialConfirmation = await _context.ShiftEditLogs
+                .AnyAsync(l => shiftDayIds.Contains(l.ShiftDayId));
+
             // ===== ユーザー一覧（星表示用に UserShiftRole を含める） =====
             ViewBag.Users = await _context.Users
                 .OrderBy(u => u.CustomId)
@@ -321,6 +448,7 @@ namespace sumile.Controllers
 
             // 初回状態（差分比較用・将来拡張）
             ViewBag.Backups               = backups;
+            ViewBag.HasInitialConfirmation = hasInitialConfirmation;
 
             // 募集期間情報
             ViewBag.RecruitmentPeriods    = allPeriods;
@@ -333,7 +461,7 @@ namespace sumile.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> UpdateShifts([FromBody] List<ShiftUpdateModel> shiftUpdates, [FromQuery] int periodId)
+        public async Task<IActionResult> UpdateShifts([FromBody] ShiftUpdateRequest request, [FromQuery] int periodId)
         {
             try
             {
@@ -346,7 +474,7 @@ namespace sumile.Controllers
                     });
                 }
 
-                if (shiftUpdates == null || !shiftUpdates.Any())
+                if (request?.ShiftUpdates == null || !request.ShiftUpdates.Any())
                     return Json(new { success = false, error = "シフト更新データが空です。" });
 
                 var logs = new List<ShiftEditLog>();
@@ -354,12 +482,40 @@ namespace sumile.Controllers
                 if (string.IsNullOrEmpty(adminUserId))
                     return Json(new { success = false, error = "管理者のユーザーIDが取得できませんでした。" });
 
+                var trimmedReason = request.Reason?.Trim();
+
                 var shiftDays = await _context.ShiftDays
                     .Where(d => d.RecruitmentPeriodId == periodId)
                     .ToListAsync();
                 var shiftDayDict = shiftDays.ToDictionary(d => d.Date.Date, d => d.Id);
 
-                foreach (var shift in shiftUpdates)
+                var backups = await _context.SubmitBackups
+                    .Where(b => b.RecruitmentPeriodId == periodId)
+                    .ToListAsync();
+
+                var initialStateByKey = backups
+                    .GroupBy(b => GetShiftCellKey(b.UserId, b.ShiftDayId, b.ShiftType))
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.OrderBy(b => b.BackedUpAt).First().ShiftStatus);
+
+                var existingSubmissions = await _context.ShiftSubmissions
+                    .Where(s => shiftDayDict.Values.Contains(s.ShiftDayId))
+                    .ToListAsync();
+
+                var hasInitialConfirmation = await _context.ShiftEditLogs
+                    .AnyAsync(l => shiftDayDict.Values.Contains(l.ShiftDayId));
+
+                var submissionByKey = existingSubmissions
+                    .GroupBy(s => GetShiftCellKey(s.UserId, s.ShiftDayId, s.ShiftType))
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g
+                            .OrderByDescending(s => s.SubmittedAt ?? DateTime.MinValue)
+                            .ThenByDescending(s => s.Id)
+                            .First());
+
+                foreach (var shift in request.ShiftUpdates)
                 {
                     if (shift == null || string.IsNullOrEmpty(shift.UserId) || string.IsNullOrEmpty(shift.Date))
                         continue;
@@ -392,11 +548,17 @@ namespace sumile.Controllers
 
 
                     ShiftType shiftType = (ShiftType)shift.ShiftType;
+                    var submissionKey = GetShiftCellKey(shift.UserId, shiftDayId, shiftType);
 
-                    var existing = await _context.ShiftSubmissions.FirstOrDefaultAsync(s =>
-                        s.UserId == shift.UserId &&
-                        s.ShiftDayId == shiftDayId &&
-                        s.ShiftType == shiftType);
+                    submissionByKey.TryGetValue(submissionKey, out var existing);
+                    var currentState = existing?.ShiftStatus ?? ShiftState.None;
+                    if (currentState == newState)
+                    {
+                        continue;
+                    }
+
+                    var initialState = GetInitialState(initialStateByKey, shift.UserId, shiftDayId, shiftType);
+                    var note = BuildEditLogNote(hasInitialConfirmation, initialState, currentState, newState, trimmedReason);
 
                     if (existing == null)
                     {
@@ -420,6 +582,7 @@ namespace sumile.Controllers
                             UserShiftRole = userRole
                         };
                         _context.ShiftSubmissions.Add(newSubmission);
+                        submissionByKey[submissionKey] = newSubmission;
 
                         logs.Add(new ShiftEditLog
                         {
@@ -430,10 +593,10 @@ namespace sumile.Controllers
                             OldState = ShiftState.None,
                             NewState = newState,
                             EditDate = DateTime.UtcNow,
-                            Note = ""
+                            Note = note
                         });
                     }
-                    else if (existing.ShiftStatus != newState)
+                    else
                     {
                         logs.Add(new ShiftEditLog
                         {
@@ -444,7 +607,7 @@ namespace sumile.Controllers
                             OldState = existing.ShiftStatus,
                             NewState = newState,
                             EditDate = DateTime.UtcNow,
-                            Note = ""
+                            Note = note
                         });
 
                         existing.ShiftStatus = newState;
@@ -467,8 +630,6 @@ namespace sumile.Controllers
                 return Json(new { success = false, error = ex.InnerException?.Message ?? ex.Message });
             }
         }
-
-
        [HttpPost]
         public async Task<IActionResult> ToggleSubmissionStatus(int id)
         {
@@ -727,6 +888,12 @@ namespace sumile.Controllers
             return RedirectToAction("Index", new { periodId });
         }
 
+    }
+
+    public class ShiftUpdateRequest
+    {
+        public List<ShiftUpdateModel> ShiftUpdates { get; set; } = new();
+        public string? Reason { get; set; }
     }
 
     public class ShiftUpdateModel

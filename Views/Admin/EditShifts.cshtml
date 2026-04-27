@@ -17,6 +17,7 @@
     var keyAccepted = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
     var requiredWorkers = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
     var remaining = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
+    var hasInitialConfirmation = ViewBag.HasInitialConfirmation as bool? ?? false;
 
     var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
@@ -43,6 +44,14 @@
 <div class="text-muted small mb-2">
     表上段の数値は必要枚数です。下段の必要人数・残りは人数で表示しています。
     黄色のセルは、締切時に保存した初期提出状態から変更されています。
+    @if (hasInitialConfirmation)
+    {
+        <text>初回確定後の変更はそのまま保存できます。必要なときだけ変更理由を残してください。</text>
+    }
+    else
+    {
+        <text>最初の保存は「初回確定」として扱われ、その内容が Shift/Index に反映されます。</text>
+    }
 </div>
 
 <div class="shift-table-fit">
@@ -159,7 +168,16 @@
 </table>
 </div>
 
-<button id="saveBtn" class="btn btn-primary mt-3">保存</button>
+@if (hasInitialConfirmation)
+{
+    <div class="mt-3" style="max-width: 720px;">
+        <label for="changeReason" class="form-label">変更理由</label>
+        <textarea id="changeReason" class="form-control" rows="3" placeholder="必要なときだけ入力してください"></textarea>
+        <div class="form-text">従業員同士の都合調整なら空でも大丈夫です。特別業務など理由を残したい変更のときに使ってください。</div>
+    </div>
+}
+
+<button id="saveBtn" class="btn btn-primary mt-3">@(hasInitialConfirmation ? "変更を保存" : "初回確定")</button>
 <a asp-controller="Admin" asp-action="Index" asp-route-periodId="@selectedPeriodId"
    class="btn btn-secondary mt-3 ms-2">保存せずに戻る</a>
 
@@ -291,7 +309,7 @@
     document.getElementById("saveBtn").addEventListener("click", async () => {
         const updates = [];
         cells.forEach(cell => {
-            updates.push({
+            const payload = {
                 userId: cell.dataset.user,
                 date: cell.dataset.day,
                 shiftType: parseInt(cell.dataset.type),
@@ -301,8 +319,12 @@
                     cell.dataset.state == 3 ? "△" :
                     cell.dataset.state == 4 ? "🔴" :
                     cell.dataset.state == 0 ? "×" : ""
-            });
+            };
+
+            updates.push(payload);
         });
+
+        const reason = document.getElementById("changeReason")?.value?.trim() ?? "";
 
         const res = await fetch(`/Admin/UpdateShifts?periodId=@selectedPeriodId`, {
             method: "POST",
@@ -310,7 +332,10 @@
                 "Content-Type": "application/json",
                 "RequestVerificationToken": requestVerificationToken ?? ""
             },
-            body: JSON.stringify(updates)
+            body: JSON.stringify({
+                shiftUpdates: updates,
+                reason
+            })
         });
 
         let result;
