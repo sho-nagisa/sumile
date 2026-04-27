@@ -4,3 +4,4 @@ bin/
 .env
 .dotnet/
 .nuget/
+wwwroot/shift_pdfs/*.pdf
