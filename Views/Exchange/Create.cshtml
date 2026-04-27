@@ -9,7 +9,7 @@
 
 <input type="hidden" id="selectedShiftId" name="offeredShiftSubmissionId" />
 
-@foreach (var periodGroup in shiftsByPeriod)
+@foreach (var periodGroup in shiftsByPeriod.OrderByDescending(g => g.Key.StartDate))
 {
     <h4>募集期間: @periodGroup.Key.StartDate:yyyy-MM-dd ～ @periodGroup.Key.EndDate:yyyy-MM-dd</h4>
     <table class="table table-bordered text-center mb-5">
@@ -21,7 +21,7 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var date in periodGroup.Value.Select(s => s.ShiftDay.Date.Date).Distinct().OrderBy(d => d))
+            @foreach (var date in periodGroup.Value.Select(s => s.ShiftDay.Date.Date).Distinct().OrderByDescending(d => d))
             {
                 var morning = periodGroup.Value.FirstOrDefault(s => s.ShiftDay.Date.Date == date && s.ShiftType == ShiftType.Morning);
                 var night = periodGroup.Value.FirstOrDefault(s => s.ShiftDay.Date.Date == date && s.ShiftType == ShiftType.Night);
