@@ -115,6 +115,72 @@ namespace sumile.Controllers
 
             return $"{actionLabel}: {reason.Trim()}";
         }
+
+        private static bool CountsAsSubmittedForAutoAssign(ShiftState state)
+        {
+            return state != ShiftState.None;
+        }
+
+        private static bool IsAssignableForAutoAssign(ShiftState state)
+        {
+            return state == ShiftState.Accepted ||
+                   state == ShiftState.NotAccepted ||
+                   state == ShiftState.KeyHolder;
+        }
+
+        private static bool IsKeyHolderCandidate(ShiftSubmission submission)
+        {
+            return submission.UserShiftRole == UserShiftRole.KeyHolder ||
+                   submission.ShiftStatus == ShiftState.KeyHolder;
+        }
+
+        private static int ResolveRequiredWorkers(DailyWorkload workload)
+        {
+            return workload.RequiredWorkers > 0
+                ? workload.RequiredWorkers
+                : DailyWorkload.CalculateRequiredWorkers(workload.RequiredCount);
+        }
+
+        private static List<ShiftSubmission> PickBalancedCandidates(
+            IEnumerable<ShiftSubmission> candidates,
+            int count,
+            Dictionary<string, AutoAssignUserStats> userStats)
+        {
+            var selected = new List<ShiftSubmission>();
+            var remaining = candidates.ToList();
+
+            while (selected.Count < count && remaining.Any())
+            {
+                var next = remaining
+                    .OrderByDescending(s => userStats.TryGetValue(s.UserId, out var stats) ? stats.BlankRate : 0)
+                    .ThenBy(s => userStats.TryGetValue(s.UserId, out var stats) ? stats.AssignedCount : 0)
+                    .ThenByDescending(s => userStats.TryGetValue(s.UserId, out var stats) ? stats.SubmittedCount : 0)
+                    .ThenBy(s => s.UserId)
+                    .First();
+
+                selected.Add(next);
+                remaining.Remove(next);
+
+                if (userStats.TryGetValue(next.UserId, out var selectedStats))
+                {
+                    selectedStats.AssignedCount++;
+                }
+            }
+
+            return selected;
+        }
+
+        private class AutoAssignUserStats
+        {
+            public int SubmittedCount { get; set; }
+            public int CandidateCount { get; set; }
+            public int AssignedCount { get; set; }
+
+            public double BlankRate =>
+                SubmittedCount <= 0
+                    ? 0
+                    : (CandidateCount - AssignedCount) / (double)SubmittedCount;
+        }
         
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
@@ -821,62 +887,116 @@ namespace sumile.Controllers
 
             var shiftDays = await _context.ShiftDays
                 .Where(d => d.RecruitmentPeriodId == periodId)
+                .OrderBy(d => d.Date)
                 .ToListAsync();
 
+            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
+
             var workloads = await _context.DailyWorkloads
+                .Where(w => shiftDayIds.Contains(w.ShiftDayId))
                 .ToDictionaryAsync(w => w.ShiftDayId);
 
             var submissions = await _context.ShiftSubmissions
-                .Where(s => shiftDays.Select(d => d.Id).Contains(s.ShiftDayId) &&
-                            s.ShiftStatus == ShiftState.Accepted &&
-                            s.UserShiftRole != UserShiftRole.New)
+                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
                 .Include(s => s.ShiftDay)
                 .ToListAsync();
 
+            var managedSubmissions = submissions
+                .Where(s => IsAssignableForAutoAssign(s.ShiftStatus))
+                .ToList();
+
+            var candidates = managedSubmissions
+                .Where(s => s.UserShiftRole != UserShiftRole.New)
+                .ToList();
+
+            var submittedCountByUser = submissions
+                .Where(s => s.UserShiftRole != UserShiftRole.New)
+                .Where(s => CountsAsSubmittedForAutoAssign(s.ShiftStatus))
+                .GroupBy(s => s.UserId)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var candidateCountByUser = candidates
+                .GroupBy(s => s.UserId)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var userStats = submittedCountByUser
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => new AutoAssignUserStats
+                    {
+                        SubmittedCount = kvp.Value,
+                        CandidateCount = candidateCountByUser.TryGetValue(kvp.Key, out var candidateCount)
+                            ? candidateCount
+                            : 0
+                    });
+
             var now = DateTime.UtcNow;
+            foreach (var submission in managedSubmissions)
+            {
+                submission.IsSelected = false;
+                submission.SubmittedAt = now;
+                submission.ShiftStatus = ShiftState.NotAccepted;
+                submission.UserType = UserType.AdminUpdated;
+                _context.ShiftSubmissions.Update(submission);
+            }
+
+            var keyHolderShortages = new List<string>();
+            var workerShortages = new List<string>();
 
             foreach (var shiftDay in shiftDays)
             {
                 if (!workloads.TryGetValue(shiftDay.Id, out var workload))
                     continue;
 
-                int requiredWorkers = workload.RequiredWorkers > 0
-                    ? workload.RequiredWorkers
-                    : DailyWorkload.CalculateRequiredWorkers(workload.RequiredCount);
-
-                int targetNormal = requiredWorkers / 2;
-                int targetKey = requiredWorkers - targetNormal;
+                int requiredWorkers = ResolveRequiredWorkers(workload);
+                if (requiredWorkers <= 0)
+                    continue;
 
                 foreach (ShiftType type in Enum.GetValues(typeof(ShiftType)))
                 {
-                    var candidates = submissions
+                    var cellCandidates = candidates
                         .Where(s => s.ShiftDayId == shiftDay.Id && s.ShiftType == type)
-                        .OrderBy(s => s.UserShiftRole)
                         .ToList();
 
                     var selected = new List<ShiftSubmission>();
+                    var requiredKeyHolders = (int)Math.Ceiling(requiredWorkers / 2.0);
 
-                    var keyHolders = candidates.Where(s => s.UserShiftRole == UserShiftRole.KeyHolder).Take(targetKey).ToList();
-                    var normals = candidates.Where(s => s.UserShiftRole == UserShiftRole.Normal).Take(targetNormal).ToList();
+                    var selectedKeyHolders = PickBalancedCandidates(
+                        cellCandidates.Where(IsKeyHolderCandidate),
+                        requiredKeyHolders,
+                        userStats);
 
-                    selected.AddRange(keyHolders);
-                    selected.AddRange(normals);
+                    selected.AddRange(selectedKeyHolders);
 
-                    // 足りなければNormalで補う
+                    if (selectedKeyHolders.Count < requiredKeyHolders)
+                    {
+                        keyHolderShortages.Add(
+                            $"{shiftDay.Date:MM/dd} {ConvertShiftTypeToLabel(type)}: {selectedKeyHolders.Count}/{requiredKeyHolders}");
+                    }
+
                     int stillNeeded = requiredWorkers - selected.Count;
                     if (stillNeeded > 0)
                     {
-                        var remainingNormals = candidates
-                            .Where(s => s.UserShiftRole == UserShiftRole.Normal && !selected.Contains(s))
-                            .Take(stillNeeded);
-                        selected.AddRange(remainingNormals);
+                        selected.AddRange(PickBalancedCandidates(
+                            cellCandidates.Where(s => !selected.Contains(s)),
+                            stillNeeded,
+                            userStats));
+                    }
+
+                    if (selected.Count < requiredWorkers)
+                    {
+                        workerShortages.Add(
+                            $"{shiftDay.Date:MM/dd} {ConvertShiftTypeToLabel(type)}: {selected.Count}/{requiredWorkers}");
                     }
 
                     foreach (var s in selected)
                     {
                         s.IsSelected = true;
                         s.SubmittedAt = now;
-                        s.ShiftStatus = ShiftState.Accepted;
+                        s.ShiftStatus = IsKeyHolderCandidate(s)
+                            ? ShiftState.KeyHolder
+                            : ShiftState.Accepted;
+                        s.UserType = UserType.AdminUpdated;
                         _context.ShiftSubmissions.Update(s);
                     }
                 }
@@ -884,6 +1004,22 @@ namespace sumile.Controllers
 
             await _context.SaveChangesAsync();
             TempData["SuccessMessage"] = "シフトの自動割り当てが完了しました。";
+            if (keyHolderShortages.Any() || workerShortages.Any())
+            {
+                var messages = new List<string>();
+                if (keyHolderShortages.Any())
+                {
+                    messages.Add("鍵持ち不足: " + string.Join("、", keyHolderShortages.Take(8)));
+                }
+
+                if (workerShortages.Any())
+                {
+                    messages.Add("人数不足: " + string.Join("、", workerShortages.Take(8)));
+                }
+
+                TempData["WarningMessage"] = string.Join(" / ", messages);
+            }
+
             await _pdfService.GenerateShiftPdfAsync(periodId);
             return RedirectToAction("Index", new { periodId });
         }

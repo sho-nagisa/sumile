@@ -28,6 +28,21 @@
 
 <h2>@ViewData["Title"]</h2>
 
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+
+@if (TempData["WarningMessage"] != null)
+{
+    <div class="alert alert-warning">@TempData["WarningMessage"]</div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
 <div class="mb-3">
     <a href="@Url.Action("SetRecruitmentPeriod", "Admin")" class="btn btn-primary">募集期間設定</a>
     <a href="@Url.Action("EditShifts", "Admin")" class="btn btn-secondary">シフト編集</a>
