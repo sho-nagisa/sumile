@@ -1,34 +1,24 @@
+@model sumile.ViewModels.ShiftSubmissionPageViewModel
 @using sumile.Models
 @using System.Globalization
 
 @{
     ViewData["Title"] = "シフト提出";
-    var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
-    var existingSubs = ViewBag.ExistingSubmissions as List<ShiftSubmission> ?? new List<ShiftSubmission>();
-    var periods = ViewBag.Periods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
-    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
-    var weekdayCopyShiftsJson = ViewBag.WeekdayCopyShiftsJson as string ?? "[]";
-    var weekdayCopySourceLabel = ViewBag.WeekdayCopySourceLabel as string;
-    var previousPeriodCopyShiftsJson = ViewBag.PreviousPeriodCopyShiftsJson as string ?? "[]";
-    var previousPeriodCopySourceLabel = ViewBag.PreviousPeriodCopySourceLabel as string;
-    var hasCopyTools = !string.IsNullOrWhiteSpace(weekdayCopySourceLabel)
-        || !string.IsNullOrWhiteSpace(previousPeriodCopySourceLabel);
     var japaneseCulture = new CultureInfo("ja-JP");
-    var draftStorageUserKey = ViewBag.CurrentUserCustomId as string ?? "unknown";
-    var draftStoragePeriodKey = selectedPeriodId?.ToString() ?? "none";
+    var draftStoragePeriodKey = Model.SelectedPeriodId?.ToString() ?? "none";
 }
 
 <h2>@ViewData["Title"]</h2>
 
-@if (periods.Any())
+@if (Model.Periods.Any())
 {
     <form method="get" asp-action="Submission" class="mb-3">
         <label for="periodId" class="form-label">募集期間</label>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <select id="periodId" name="periodId" class="form-select w-auto">
-                @foreach (var period in periods)
+                @foreach (var period in Model.Periods)
                 {
-                    <option value="@period.Id" selected="@(period.Id == selectedPeriodId)">
+                    <option value="@period.Id" selected="@(period.Id == Model.SelectedPeriodId)">
                         @period.StartDate.ToString("yyyy/MM/dd") ～ @period.EndDate.ToString("MM/dd")
                     </option>
                 }
@@ -39,7 +29,7 @@
 }
 
 <form asp-action="SubmitShifts" method="post" id="shiftForm">
-    <input type="hidden" name="periodId" value="@selectedPeriodId" />
+    <input type="hidden" name="periodId" value="@Model.SelectedPeriodId" />
     <input type="hidden" name="selectedShifts" id="selectedShifts" />
 
     <div id="draftNotice" class="alert alert-info d-none align-items-center justify-content-between gap-2 flex-wrap" role="status">
@@ -50,24 +40,24 @@
         </span>
     </div>
 
-    @if (hasCopyTools)
+    @if (Model.HasCopyTools)
     {
         <div class="border rounded p-3 mb-3 bg-light">
             <div class="fw-semibold mb-2">10日ブロックのコピー</div>
             <div class="d-flex flex-wrap gap-2">
-                @if (!string.IsNullOrWhiteSpace(weekdayCopySourceLabel))
+                @if (!string.IsNullOrWhiteSpace(Model.WeekdayCopySourceLabel))
                 {
                     <button type="button" class="btn btn-outline-primary" id="copyWeekdayShifts">
                         直近の同じ曜日をコピー
                     </button>
-                    <span class="text-muted small align-self-center">@weekdayCopySourceLabel</span>
+                    <span class="text-muted small align-self-center">@Model.WeekdayCopySourceLabel</span>
                 }
-                @if (!string.IsNullOrWhiteSpace(previousPeriodCopySourceLabel))
+                @if (!string.IsNullOrWhiteSpace(Model.PreviousPeriodCopySourceLabel))
                 {
                     <button type="button" class="btn btn-outline-secondary" id="copyPreviousPeriodShifts">
                         前回ブロックを日順でコピー
                     </button>
-                    <span class="text-muted small align-self-center">@previousPeriodCopySourceLabel</span>
+                    <span class="text-muted small align-self-center">@Model.PreviousPeriodCopySourceLabel</span>
                 }
                 <button type="button" class="btn btn-outline-danger" id="clearShifts">
                     すべて×にする
@@ -85,10 +75,10 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var day in shiftDays)
+            @foreach (var day in Model.ShiftDays)
             {
-                var morning = existingSubs.FirstOrDefault(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
-                var night = existingSubs.FirstOrDefault(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
+                var morning = Model.ExistingSubmissions.FirstOrDefault(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Morning);
+                var night = Model.ExistingSubmissions.FirstOrDefault(s => s.ShiftDayId == day.Id && s.ShiftType == ShiftType.Night);
 
                 var morningSymbol = ConvertStateToSymbol(morning?.ShiftStatus);
                 var nightSymbol = ConvertStateToSymbol(night?.ShiftStatus);
@@ -168,12 +158,12 @@
             const shiftForm = document.getElementById("shiftForm");
             const shiftCells = document.querySelectorAll(".shift-cell");
             const selectedShiftsInput = document.getElementById("selectedShifts");
-            const weekdayCopyShifts = @Html.Raw(weekdayCopyShiftsJson);
-            const previousPeriodCopyShifts = @Html.Raw(previousPeriodCopyShiftsJson);
+            const weekdayCopyShifts = @Html.Raw(Model.WeekdayCopyShiftsJson);
+            const previousPeriodCopyShifts = @Html.Raw(Model.PreviousPeriodCopyShiftsJson);
             const copyWeekdayButton = document.getElementById("copyWeekdayShifts");
             const copyPreviousPeriodButton = document.getElementById("copyPreviousPeriodShifts");
             const clearShiftsButton = document.getElementById("clearShifts");
-            const draftStorageKey = "sumile.shiftDraft.@draftStorageUserKey.@draftStoragePeriodKey";
+            const draftStorageKey = "sumile.shiftDraft.@Model.CurrentUserCustomId.@draftStoragePeriodKey";
             const draftNotice = document.getElementById("draftNotice");
             const draftNoticeText = document.getElementById("draftNoticeText");
             const restoreDraftButton = document.getElementById("restoreDraftButton");

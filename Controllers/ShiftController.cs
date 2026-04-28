@@ -6,6 +6,7 @@ using Newtonsoft.Json;
 using sumile.Data;
 using sumile.Models;
 using sumile.Services;
+using sumile.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -291,19 +292,14 @@ namespace sumile.Controllers
                 .OrderByDescending(p => p.StartDate)
                 .ToListAsync();
 
-            ViewBag.Periods = openPeriods;
-
             if (!periodId.HasValue && openPeriods.Any())
                 periodId = openPeriods.First().Id;
 
-            ViewBag.SelectedPeriodId = periodId;
             var selectedPeriod = periodId.HasValue
                 ? openPeriods.FirstOrDefault(p => p.Id == periodId.Value)
                 : null;
-            ViewBag.SelectedPeriod = selectedPeriod;
 
             var shiftDays = await GetShiftDaysForPeriod(periodId);
-            ViewBag.Dates = shiftDays;
 
             var userId = currentUser.Id;
             var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
@@ -311,19 +307,25 @@ namespace sumile.Controllers
                 .Where(s => s.UserId == userId && shiftDayIds.Contains(s.ShiftDayId))
                 .ToListAsync();
 
-            ViewBag.ExistingSubmissions = existingSubmissions;
-            ViewBag.CurrentUserCustomId = currentUser.CustomId > 0 ? currentUser.CustomId.ToString() : "No user";
-            ViewBag.CurrentUserName = string.IsNullOrEmpty(currentUser.Name) ? "No user" : currentUser.Name;
-
             var weekdayCopyOption = await BuildWeekdayCopyOptionAsync(userId, selectedPeriod, shiftDays);
             var previousPeriodCopyOption = await BuildPreviousPeriodCopyOptionAsync(userId, selectedPeriod, shiftDays);
 
-            ViewBag.WeekdayCopyShiftsJson = JsonConvert.SerializeObject(weekdayCopyOption.Cells);
-            ViewBag.WeekdayCopySourceLabel = weekdayCopyOption.SourceLabel;
-            ViewBag.PreviousPeriodCopyShiftsJson = JsonConvert.SerializeObject(previousPeriodCopyOption.Cells);
-            ViewBag.PreviousPeriodCopySourceLabel = previousPeriodCopyOption.SourceLabel;
+            var model = new ShiftSubmissionPageViewModel
+            {
+                Periods = openPeriods,
+                SelectedPeriodId = periodId,
+                SelectedPeriod = selectedPeriod,
+                ShiftDays = shiftDays,
+                ExistingSubmissions = existingSubmissions,
+                CurrentUserCustomId = currentUser.CustomId > 0 ? currentUser.CustomId.ToString() : "No user",
+                CurrentUserName = string.IsNullOrEmpty(currentUser.Name) ? "No user" : currentUser.Name,
+                WeekdayCopyShiftsJson = JsonConvert.SerializeObject(weekdayCopyOption.Cells),
+                WeekdayCopySourceLabel = weekdayCopyOption.SourceLabel,
+                PreviousPeriodCopyShiftsJson = JsonConvert.SerializeObject(previousPeriodCopyOption.Cells),
+                PreviousPeriodCopySourceLabel = previousPeriodCopyOption.SourceLabel
+            };
 
-            return View();
+            return View(model);
         }
 
         [HttpPost]
