@@ -5,6 +5,7 @@
     ViewData["Title"] = "シフト交換掲示板";
     var currentUserId = ViewBag.CurrentUserId as string;
     var isAdmin = ViewBag.IsAdmin as bool? ?? false;
+    var relatedOnly = ViewBag.RelatedOnly as bool? ?? false;
 }
 
 <h2 class="mb-4">シフト交換掲示板</h2>
@@ -19,6 +20,15 @@
 <p>
     <a asp-action="Create" class="btn btn-primary mb-3">新しい交換希望を出す</a>
 </p>
+
+<form method="get" asp-action="Index" class="mb-3">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="relatedOnly" name="relatedOnly" value="true"
+               checked="@(relatedOnly ? "checked" : null)"
+               onchange="this.form.submit()" />
+        <label class="form-check-label" for="relatedOnly">自分に関係ある交換だけ表示</label>
+    </div>
+</form>
 
 <table class="table table-bordered text-center">
     <thead class="table-light">
@@ -37,9 +47,13 @@
             var offered = item.OfferedShiftSubmission;
             var accepted = item.AcceptedShiftSubmission;
             var isOwnRequest = item.RequestedByUserId == currentUserId;
+            var isOwnApplication = item.AcceptedByUserId == currentUserId;
             var isTargetedToOtherUser = !string.IsNullOrEmpty(item.TargetUserId) && item.TargetUserId != currentUserId;
             var canApply = item.Status == ShiftExchange.StatusOpen && offered != null && !isOwnRequest && !isTargetedToOtherUser;
+            var canCancelRequest = isOwnRequest && IsCancelableByRequester(item.Status);
+            var canCancelApplication = isOwnApplication && IsPendingApproval(item.Status);
             var canFinalize = IsPendingApproval(item.Status) && isAdmin;
+            var canReject = IsPendingApproval(item.Status) && isAdmin;
 
             // ↓ ShiftDay 経由で取得（ShiftSubmission.Date は使用しない）
             var shiftDateStr = offered?.ShiftDay?.Date.ToString("yyyy-MM-dd") ?? "";
@@ -92,47 +106,68 @@
                 </td>
 
                 <td>
-                    @if (item.Status == ShiftExchange.StatusFinalized)
-                    {
-                        <span class="badge bg-success">確定</span>
-                    }
-                    else if (IsPendingApproval(item.Status))
-                    {
-                        <span class="badge bg-info text-dark">仮成立</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-warning text-dark">募集中</span>
-                    }
+                    @Html.Raw(StatusBadge(item.Status))
                 </td>
 
                 <td>
-                    @if (canApply)
-                    {
-                        <form asp-action="Select" asp-route-id="@item.Id" method="post" class="d-inline"
-                              onsubmit="return checkExchangeCapacity(this, '@shiftDateStr', '@shiftTypeInt', @periodId, '@ViewBag.CurrentUserRole', '@targetUserRole');">
-                            <button type="submit" class="btn btn-sm btn-outline-primary">この交換に応募</button>
-                        </form>
-                    }
-                    else if (canFinalize)
-                    {
-                        <form asp-action="FinalizeExchange" method="post" class="d-inline">
-                            <input type="hidden" name="exchangeId" value="@item.Id" />
-                            <button type="submit" class="btn btn-sm btn-success">確定する</button>
-                        </form>
-                    }
-                    else if (IsPendingApproval(item.Status))
-                    {
-                        <span class="text-muted">管理者承認待ち</span>
-                    }
-                    else if (isOwnRequest && item.Status == ShiftExchange.StatusOpen)
-                    {
-                        <span class="text-muted">応募待ち</span>
-                    }
-                    else
-                    {
-                        <span>-</span>
-                    }
+                    <div class="d-flex flex-wrap justify-content-center gap-1">
+                        @if (canApply)
+                        {
+                            <form asp-action="Select" asp-route-id="@item.Id" method="post" class="d-inline"
+                                  onsubmit="return checkExchangeCapacity(this, '@shiftDateStr', '@shiftTypeInt', @periodId, '@ViewBag.CurrentUserRole', '@targetUserRole');">
+                                <button type="submit" class="btn btn-sm btn-outline-primary">この交換に応募</button>
+                            </form>
+                        }
+
+                        @if (canCancelRequest)
+                        {
+                            <form asp-action="CancelRequest" asp-route-id="@item.Id" method="post" class="d-inline"
+                                  onsubmit="return confirm('この交換募集を取り消しますか？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">募集を取消</button>
+                            </form>
+                        }
+
+                        @if (canCancelApplication)
+                        {
+                            <form asp-action="CancelApplication" asp-route-id="@item.Id" method="post" class="d-inline"
+                                  onsubmit="return confirm('この応募を取り消しますか？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">応募を取消</button>
+                            </form>
+                        }
+
+                        @if (canFinalize)
+                        {
+                            <form asp-action="FinalizeExchange" method="post" class="d-inline">
+                                <input type="hidden" name="exchangeId" value="@item.Id" />
+                                <button type="submit" class="btn btn-sm btn-success">確定する</button>
+                            </form>
+                        }
+
+                        @if (canReject)
+                        {
+                            <form asp-action="RejectExchange" method="post" class="d-inline"
+                                  onsubmit="return confirm('この交換を却下しますか？');">
+                                <input type="hidden" name="exchangeId" value="@item.Id" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">却下する</button>
+                            </form>
+                        }
+
+                        @if (!canApply && !canCancelRequest && !canCancelApplication && !canFinalize && !canReject)
+                        {
+                            @if (IsPendingApproval(item.Status))
+                            {
+                                <span class="text-muted">管理者承認待ち</span>
+                            }
+                            else if (isOwnRequest && item.Status == ShiftExchange.StatusOpen)
+                            {
+                                <span class="text-muted">応募待ち</span>
+                            }
+                            else
+                            {
+                                <span>-</span>
+                            }
+                        }
+                    </div>
                 </td>
             </tr>
         }
@@ -165,6 +200,24 @@
     {
         return status == ShiftExchange.StatusPendingApproval ||
                status == ShiftExchange.StatusAcceptedLegacy;
+    }
+
+    bool IsCancelableByRequester(string status)
+    {
+        return status == ShiftExchange.StatusOpen || IsPendingApproval(status);
+    }
+
+    string StatusBadge(string status)
+    {
+        return status switch
+        {
+            ShiftExchange.StatusFinalized => "<span class=\"badge bg-success\">確定</span>",
+            ShiftExchange.StatusCanceled => "<span class=\"badge bg-secondary\">取消済み</span>",
+            ShiftExchange.StatusRejected => "<span class=\"badge bg-danger\">却下</span>",
+            ShiftExchange.StatusPendingApproval => "<span class=\"badge bg-info text-dark\">仮成立</span>",
+            ShiftExchange.StatusAcceptedLegacy => "<span class=\"badge bg-info text-dark\">仮成立</span>",
+            _ => "<span class=\"badge bg-warning text-dark\">募集中</span>"
+        };
     }
 }
 

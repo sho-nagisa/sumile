@@ -9,6 +9,8 @@ namespace sumile.Models
         public const string StatusOpen = "Open";
         public const string StatusPendingApproval = "PendingApproval";
         public const string StatusFinalized = "Finalized";
+        public const string StatusCanceled = "Canceled";
+        public const string StatusRejected = "Rejected";
         public const string StatusAcceptedLegacy = "Accepted";
 
         public int Id { get; set; }

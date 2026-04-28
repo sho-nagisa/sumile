@@ -27,6 +27,10 @@ public class ExchangeController : Controller
         status == ShiftExchange.StatusPendingApproval ||
         status == ShiftExchange.StatusAcceptedLegacy;
 
+    private static bool IsCancelableByRequesterStatus(string status) =>
+        IsOpenStatus(status) ||
+        IsPendingApprovalStatus(status);
+
     private async Task<bool> IsAdminUser(string? userId)
     {
         if (string.IsNullOrEmpty(userId)) return false;
@@ -147,6 +151,85 @@ public class ExchangeController : Controller
         await _context.SaveChangesAsync();
 
         TempData["Message"] = "応募しました。管理者の承認待ちです。";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelRequest(int id)
+    {
+        var userId = HttpContext.Session.GetString("UserId");
+        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+
+        var exchange = await _context.ShiftExchanges.FirstOrDefaultAsync(e => e.Id == id);
+        if (exchange == null)
+            return NotFound("交換募集が見つかりません。");
+
+        if (exchange.RequestedByUserId != userId)
+            return Forbid();
+
+        if (!IsCancelableByRequesterStatus(exchange.Status))
+        {
+            TempData["Message"] = "この交換募集は取り消せません。";
+            return RedirectToAction(nameof(Index));
+        }
+
+        exchange.Status = ShiftExchange.StatusCanceled;
+        exchange.UpdatedAt = DateTime.UtcNow;
+        _context.ShiftExchanges.Update(exchange);
+        await _context.SaveChangesAsync();
+
+        TempData["Message"] = "交換募集を取り消しました。";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelApplication(int id)
+    {
+        var userId = HttpContext.Session.GetString("UserId");
+        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+
+        var exchange = await _context.ShiftExchanges.FirstOrDefaultAsync(e => e.Id == id);
+        if (exchange == null)
+            return NotFound("交換募集が見つかりません。");
+
+        if (!IsPendingApprovalStatus(exchange.Status) || exchange.AcceptedByUserId != userId)
+        {
+            TempData["Message"] = "この応募は取り消せません。";
+            return RedirectToAction(nameof(Index));
+        }
+
+        exchange.AcceptedByUserId = null;
+        exchange.AcceptedAt = null;
+        exchange.AcceptedShiftSubmissionId = null;
+        exchange.Status = ShiftExchange.StatusOpen;
+        exchange.UpdatedAt = DateTime.UtcNow;
+        _context.ShiftExchanges.Update(exchange);
+        await _context.SaveChangesAsync();
+
+        TempData["Message"] = "応募を取り消しました。";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RejectExchange(int exchangeId)
+    {
+        var userId = HttpContext.Session.GetString("UserId");
+        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+        if (!await IsAdminUser(userId)) return Unauthorized();
+
+        var exchange = await _context.ShiftExchanges.FirstOrDefaultAsync(e => e.Id == exchangeId);
+        if (exchange == null || !IsPendingApprovalStatus(exchange.Status))
+            return NotFound("承認待ちの交換が見つかりません。");
+
+        exchange.Status = ShiftExchange.StatusRejected;
+        exchange.UpdatedAt = DateTime.UtcNow;
+        _context.ShiftExchanges.Update(exchange);
+        await _context.SaveChangesAsync();
+
+        TempData["Message"] = "交換を却下しました。";
         return RedirectToAction(nameof(Index));
     }
 
@@ -284,7 +367,7 @@ public class ExchangeController : Controller
         return Json(new { redCount, blackCount, total });
     }
 
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(bool relatedOnly = false)
     {
         var currentUserId = HttpContext.Session.GetString("UserId");
         if (string.IsNullOrEmpty(currentUserId)) return RedirectToAction("Login", "Account");
@@ -302,7 +385,14 @@ public class ExchangeController : Controller
                 .ThenInclude(s => s!.ShiftDay)
             .AsQueryable();
 
-        if (!isAdmin)
+        if (relatedOnly)
+        {
+            query = query.Where(e =>
+                e.TargetUserId == currentUserId ||
+                e.RequestedByUserId == currentUserId ||
+                e.AcceptedByUserId == currentUserId);
+        }
+        else if (!isAdmin)
         {
             query = query.Where(e =>
                 e.TargetUserId == null ||
@@ -318,6 +408,7 @@ public class ExchangeController : Controller
         ViewBag.CurrentUserId = currentUserId;
         ViewBag.CurrentUserRole = currentUser?.UserShiftRole.ToString() ?? "Normal";
         ViewBag.IsAdmin = isAdmin;
+        ViewBag.RelatedOnly = relatedOnly;
 
         return View(exchanges);
     }
