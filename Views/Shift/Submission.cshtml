@@ -1,17 +1,70 @@
-﻿@using sumile.Models
+@using sumile.Models
+@using System.Globalization
 
 @{
     ViewData["Title"] = "シフト提出";
     var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
     var existingSubs = ViewBag.ExistingSubmissions as List<ShiftSubmission> ?? new List<ShiftSubmission>();
+    var periods = ViewBag.Periods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
     int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+    var weekdayCopyShiftsJson = ViewBag.WeekdayCopyShiftsJson as string ?? "[]";
+    var weekdayCopySourceLabel = ViewBag.WeekdayCopySourceLabel as string;
+    var previousPeriodCopyShiftsJson = ViewBag.PreviousPeriodCopyShiftsJson as string ?? "[]";
+    var previousPeriodCopySourceLabel = ViewBag.PreviousPeriodCopySourceLabel as string;
+    var hasCopyTools = !string.IsNullOrWhiteSpace(weekdayCopySourceLabel)
+        || !string.IsNullOrWhiteSpace(previousPeriodCopySourceLabel);
+    var japaneseCulture = new CultureInfo("ja-JP");
 }
 
 <h2>@ViewData["Title"]</h2>
 
+@if (periods.Any())
+{
+    <form method="get" asp-action="Submission" class="mb-3">
+        <label for="periodId" class="form-label">募集期間</label>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <select id="periodId" name="periodId" class="form-select w-auto">
+                @foreach (var period in periods)
+                {
+                    <option value="@period.Id" selected="@(period.Id == selectedPeriodId)">
+                        @period.StartDate.ToString("yyyy/MM/dd") ～ @period.EndDate.ToString("MM/dd")
+                    </option>
+                }
+            </select>
+            <button type="submit" class="btn btn-secondary">表示</button>
+        </div>
+    </form>
+}
+
 <form asp-action="SubmitShifts" method="post" id="shiftForm">
     <input type="hidden" name="periodId" value="@selectedPeriodId" />
     <input type="hidden" name="selectedShifts" id="selectedShifts" />
+
+    @if (hasCopyTools)
+    {
+        <div class="border rounded p-3 mb-3 bg-light">
+            <div class="fw-semibold mb-2">10日ブロックのコピー</div>
+            <div class="d-flex flex-wrap gap-2">
+                @if (!string.IsNullOrWhiteSpace(weekdayCopySourceLabel))
+                {
+                    <button type="button" class="btn btn-outline-primary" id="copyWeekdayShifts">
+                        直近の同じ曜日をコピー
+                    </button>
+                    <span class="text-muted small align-self-center">@weekdayCopySourceLabel</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(previousPeriodCopySourceLabel))
+                {
+                    <button type="button" class="btn btn-outline-secondary" id="copyPreviousPeriodShifts">
+                        前回ブロックを日順でコピー
+                    </button>
+                    <span class="text-muted small align-self-center">@previousPeriodCopySourceLabel</span>
+                }
+                <button type="button" class="btn btn-outline-danger" id="clearShifts">
+                    すべて×にする
+                </button>
+            </div>
+        </div>
+    }
 
     <table class="table table-bordered text-center">
         <thead>
@@ -34,7 +87,10 @@
                 bool nightSelected = (nightSymbol == "〇" || nightSymbol == "△");
 
                 <tr>
-                    <td>@day.Date.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                    <td>
+                        <div>@day.Date.ToLocalTime().ToString("M/d", japaneseCulture)</div>
+                        <div class="text-muted small">@day.Date.ToLocalTime().ToString("ddd", japaneseCulture)</div>
+                    </td>
                     <td class="shift-cell @(morningSelected ? "selected" : "")"
                         data-date="@day.Date.ToString("yyyy-MM-dd")"
                         data-shift="Morning">
@@ -59,16 +115,71 @@
         document.addEventListener("DOMContentLoaded", function () {
             const shiftCells = document.querySelectorAll(".shift-cell");
             const selectedShiftsInput = document.getElementById("selectedShifts");
+            const weekdayCopyShifts = @Html.Raw(weekdayCopyShiftsJson);
+            const previousPeriodCopyShifts = @Html.Raw(previousPeriodCopyShiftsJson);
+            const copyWeekdayButton = document.getElementById("copyWeekdayShifts");
+            const copyPreviousPeriodButton = document.getElementById("copyPreviousPeriodShifts");
+            const clearShiftsButton = document.getElementById("clearShifts");
 
             shiftCells.forEach(cell => {
                 cell.addEventListener("click", function () {
                     let currentSymbol = this.textContent.trim();
                     let nextSymbol = currentSymbol === "×" ? "〇" : currentSymbol === "〇" ? "△" : "×";
-                    this.textContent = nextSymbol;
-                    this.classList.toggle("selected", nextSymbol !== "×");
+                    setCellSymbol(this, nextSymbol);
                     updateSelectedShifts();
                 });
             });
+
+            if (copyWeekdayButton) {
+                copyWeekdayButton.addEventListener("click", function () {
+                    applyCopy(weekdayCopyShifts);
+                });
+            }
+
+            if (copyPreviousPeriodButton) {
+                copyPreviousPeriodButton.addEventListener("click", function () {
+                    applyCopy(previousPeriodCopyShifts);
+                });
+            }
+
+            if (clearShiftsButton) {
+                clearShiftsButton.addEventListener("click", function () {
+                    clearAllCells();
+                    updateSelectedShifts();
+                });
+            }
+
+            function normalizeSymbol(symbol) {
+                return symbol === "〇" || symbol === "△" ? symbol : "×";
+            }
+
+            function setCellSymbol(cell, symbol) {
+                const normalizedSymbol = normalizeSymbol(symbol);
+                cell.textContent = normalizedSymbol;
+                cell.classList.toggle("selected", normalizedSymbol !== "×");
+            }
+
+            function clearAllCells() {
+                shiftCells.forEach(cell => setCellSymbol(cell, "×"));
+            }
+
+            function applyCopy(copyItems) {
+                clearAllCells();
+
+                copyItems.forEach(item => {
+                    const date = item.date || item.Date;
+                    const shiftType = item.shiftType || item.ShiftType;
+                    const shiftSymbol = item.shiftSymbol || item.ShiftSymbol;
+                    const targetCell = document.querySelector(
+                        `.shift-cell[data-date="${date}"][data-shift="${shiftType}"]`);
+
+                    if (targetCell) {
+                        setCellSymbol(targetCell, shiftSymbol);
+                    }
+                });
+
+                updateSelectedShifts();
+            }
 
             function updateSelectedShifts() {
                 let selectedShifts = [];
@@ -81,6 +192,8 @@
                 });
                 selectedShiftsInput.value = JSON.stringify(selectedShifts);
             }
+
+            updateSelectedShifts();
         });
     </script>
 }
@@ -91,8 +204,9 @@
         return state switch
         {
             ShiftState.Accepted => "〇",
+            ShiftState.KeyHolder => "〇",
             ShiftState.WantToGiveAway => "△",
-            ShiftState.NotAccepted => "",
+            ShiftState.NotAccepted => "×",
             _ => "×"
         };
     }

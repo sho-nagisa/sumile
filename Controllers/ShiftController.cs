@@ -42,6 +42,193 @@ namespace sumile.Controllers
                 .ToListAsync();
         }
 
+        private static string ToSubmissionSymbol(ShiftState? state)
+        {
+            return state switch
+            {
+                ShiftState.Accepted => "〇",
+                ShiftState.KeyHolder => "〇",
+                ShiftState.WantToGiveAway => "△",
+                _ => "×"
+            };
+        }
+
+        private static string FormatPeriodLabel(RecruitmentPeriod period)
+        {
+            return $"{period.StartDate:yyyy/MM/dd} ～ {period.EndDate:MM/dd}";
+        }
+
+        private async Task<Dictionary<(int ShiftDayId, ShiftType ShiftType), ShiftState>> LoadUserSubmissionStatesAsync(
+            string userId,
+            IReadOnlyCollection<ShiftDay> shiftDays,
+            IReadOnlyCollection<int> periodIds)
+        {
+            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
+            if (!shiftDayIds.Any() || !periodIds.Any())
+            {
+                return new Dictionary<(int ShiftDayId, ShiftType ShiftType), ShiftState>();
+            }
+
+            var backupStates = await _context.SubmitBackups
+                .Where(b =>
+                    b.UserId == userId &&
+                    periodIds.Contains(b.RecruitmentPeriodId) &&
+                    shiftDayIds.Contains(b.ShiftDayId))
+                .ToListAsync();
+
+            var states = backupStates
+                .GroupBy(b => (b.ShiftDayId, b.ShiftType))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(b => b.BackedUpAt).First().ShiftStatus);
+
+            var currentSubmissions = await _context.ShiftSubmissions
+                .Where(s => s.UserId == userId && shiftDayIds.Contains(s.ShiftDayId))
+                .ToListAsync();
+
+            foreach (var submissionGroup in currentSubmissions.GroupBy(s => (s.ShiftDayId, s.ShiftType)))
+            {
+                if (states.ContainsKey(submissionGroup.Key))
+                {
+                    continue;
+                }
+
+                states[submissionGroup.Key] = submissionGroup
+                    .OrderByDescending(s => s.SubmittedAt ?? DateTime.MinValue)
+                    .ThenByDescending(s => s.Id)
+                    .First()
+                    .ShiftStatus;
+            }
+
+            return states;
+        }
+
+        private List<ShiftCopyCellViewModel> BuildCopyCells(
+            IEnumerable<(ShiftDay TargetDay, ShiftDay SourceDay)> dayPairs,
+            Dictionary<(int ShiftDayId, ShiftType ShiftType), ShiftState> sourceStates)
+        {
+            var cells = new List<ShiftCopyCellViewModel>();
+
+            foreach (var (targetDay, sourceDay) in dayPairs)
+            {
+                foreach (ShiftType shiftType in Enum.GetValues(typeof(ShiftType)))
+                {
+                    sourceStates.TryGetValue((sourceDay.Id, shiftType), out var state);
+                    var symbol = ToSubmissionSymbol(state);
+
+                    if (symbol == "×")
+                    {
+                        continue;
+                    }
+
+                    cells.Add(new ShiftCopyCellViewModel
+                    {
+                        Date = targetDay.Date.ToString("yyyy-MM-dd"),
+                        ShiftType = shiftType.ToString(),
+                        ShiftSymbol = symbol
+                    });
+                }
+            }
+
+            return cells;
+        }
+
+        private async Task<ShiftCopyOptionViewModel> BuildWeekdayCopyOptionAsync(
+            string userId,
+            RecruitmentPeriod? selectedPeriod,
+            List<ShiftDay> targetDays)
+        {
+            var result = new ShiftCopyOptionViewModel();
+            if (selectedPeriod == null || !targetDays.Any())
+            {
+                return result;
+            }
+
+            var sourcePeriods = await _context.RecruitmentPeriods
+                .Where(p => p.Id != selectedPeriod.Id && p.StartDate < selectedPeriod.StartDate)
+                .OrderByDescending(p => p.StartDate)
+                .Take(6)
+                .ToListAsync();
+
+            var sourcePeriodIds = sourcePeriods.Select(p => p.Id).ToList();
+            if (!sourcePeriodIds.Any())
+            {
+                return result;
+            }
+
+            var sourceDays = await _context.ShiftDays
+                .Where(d => sourcePeriodIds.Contains(d.RecruitmentPeriodId))
+                .OrderByDescending(d => d.Date)
+                .ToListAsync();
+
+            var latestDayByWeekday = sourceDays
+                .GroupBy(d => d.Date.DayOfWeek)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var dayPairs = targetDays
+                .Where(target => latestDayByWeekday.ContainsKey(target.Date.DayOfWeek))
+                .Select(target => (TargetDay: target, SourceDay: latestDayByWeekday[target.Date.DayOfWeek]))
+                .ToList();
+
+            if (!dayPairs.Any())
+            {
+                return result;
+            }
+
+            var sourceStates = await LoadUserSubmissionStatesAsync(userId, sourceDays, sourcePeriodIds);
+            result.Cells = BuildCopyCells(dayPairs, sourceStates);
+
+            var usedSourceDates = dayPairs
+                .Select(pair => pair.SourceDay.Date.Date)
+                .Distinct()
+                .OrderBy(date => date)
+                .ToList();
+
+            result.SourceLabel = usedSourceDates.Count == 1
+                ? $"{usedSourceDates.First():yyyy/MM/dd} の同じ曜日"
+                : $"{usedSourceDates.First():yyyy/MM/dd} ～ {usedSourceDates.Last():MM/dd} の同じ曜日";
+
+            return result;
+        }
+
+        private async Task<ShiftCopyOptionViewModel> BuildPreviousPeriodCopyOptionAsync(
+            string userId,
+            RecruitmentPeriod? selectedPeriod,
+            List<ShiftDay> targetDays)
+        {
+            var result = new ShiftCopyOptionViewModel();
+            if (selectedPeriod == null || !targetDays.Any())
+            {
+                return result;
+            }
+
+            var sourcePeriod = await _context.RecruitmentPeriods
+                .Where(p => p.Id != selectedPeriod.Id && p.StartDate < selectedPeriod.StartDate)
+                .OrderByDescending(p => p.StartDate)
+                .FirstOrDefaultAsync();
+
+            if (sourcePeriod == null)
+            {
+                return result;
+            }
+
+            var sourceDays = await GetShiftDaysForPeriod(sourcePeriod.Id);
+            if (!sourceDays.Any())
+            {
+                return result;
+            }
+
+            var sourceStates = await LoadUserSubmissionStatesAsync(userId, sourceDays, new[] { sourcePeriod.Id });
+            var dayPairs = targetDays
+                .Take(Math.Min(targetDays.Count, sourceDays.Count))
+                .Select((target, index) => (TargetDay: target, SourceDay: sourceDays[index]))
+                .ToList();
+
+            result.Cells = BuildCopyCells(dayPairs, sourceStates);
+            result.SourceLabel = FormatPeriodLabel(sourcePeriod);
+            return result;
+        }
+
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
         {
@@ -110,6 +297,10 @@ namespace sumile.Controllers
                 periodId = openPeriods.First().Id;
 
             ViewBag.SelectedPeriodId = periodId;
+            var selectedPeriod = periodId.HasValue
+                ? openPeriods.FirstOrDefault(p => p.Id == periodId.Value)
+                : null;
+            ViewBag.SelectedPeriod = selectedPeriod;
 
             var shiftDays = await GetShiftDaysForPeriod(periodId);
             ViewBag.Dates = shiftDays;
@@ -123,6 +314,14 @@ namespace sumile.Controllers
             ViewBag.ExistingSubmissions = existingSubmissions;
             ViewBag.CurrentUserCustomId = currentUser.CustomId > 0 ? currentUser.CustomId.ToString() : "No user";
             ViewBag.CurrentUserName = string.IsNullOrEmpty(currentUser.Name) ? "No user" : currentUser.Name;
+
+            var weekdayCopyOption = await BuildWeekdayCopyOptionAsync(userId, selectedPeriod, shiftDays);
+            var previousPeriodCopyOption = await BuildPreviousPeriodCopyOptionAsync(userId, selectedPeriod, shiftDays);
+
+            ViewBag.WeekdayCopyShiftsJson = JsonConvert.SerializeObject(weekdayCopyOption.Cells);
+            ViewBag.WeekdayCopySourceLabel = weekdayCopyOption.SourceLabel;
+            ViewBag.PreviousPeriodCopyShiftsJson = JsonConvert.SerializeObject(previousPeriodCopyOption.Cells);
+            ViewBag.PreviousPeriodCopySourceLabel = previousPeriodCopyOption.SourceLabel;
 
             return View();
         }
@@ -328,6 +527,19 @@ namespace sumile.Controllers
     {
         public string Date { get; set; } = string.Empty;
         public ShiftType ShiftType { get; set; }
+        public string ShiftSymbol { get; set; } = string.Empty;
+    }
+
+    public class ShiftCopyOptionViewModel
+    {
+        public List<ShiftCopyCellViewModel> Cells { get; set; } = new List<ShiftCopyCellViewModel>();
+        public string? SourceLabel { get; set; }
+    }
+
+    public class ShiftCopyCellViewModel
+    {
+        public string Date { get; set; } = string.Empty;
+        public string ShiftType { get; set; } = string.Empty;
         public string ShiftSymbol { get; set; } = string.Empty;
     }
 }
