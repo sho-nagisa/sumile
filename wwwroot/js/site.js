@@ -10,17 +10,7 @@ function fitShiftTables() {
 
         table.style.transform = "";
         wrapper.style.height = "";
-        wrapper.style.setProperty("--shift-table-scale", "1");
-
-        if (!window.matchMedia("(max-width: 767.98px)").matches) return;
-
-        const tableWidth = table.scrollWidth;
-        const wrapperWidth = wrapper.clientWidth;
-        if (!tableWidth || !wrapperWidth || tableWidth <= wrapperWidth) return;
-
-        const scale = wrapperWidth / tableWidth;
-        wrapper.style.setProperty("--shift-table-scale", scale.toString());
-        wrapper.style.height = `${table.offsetHeight * scale}px`;
+        wrapper.style.removeProperty("--shift-table-scale");
     });
 }
 

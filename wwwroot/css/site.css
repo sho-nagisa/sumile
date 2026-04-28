@@ -44,28 +44,163 @@ body {
 
 .shift-table-fit {
   width: 100%;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
 }
 
 .shift-table-fit > table {
-  transform-origin: top left;
+  width: max-content;
+  min-width: 100%;
+  margin-bottom: 0;
+}
+
+.shift-table-fit > table th,
+.shift-table-fit > table td {
+  vertical-align: middle;
 }
 
 @media (max-width: 767.98px) {
   .shift-table-fit {
-    --shift-table-scale: 1;
+    --shift-sticky-col-1: 7rem;
+    --shift-sticky-col-2: 2.25rem;
+    --shift-sticky-col-3: 5.75rem;
+    margin-right: -0.75rem;
+    margin-left: -0.75rem;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
   }
 
   .shift-table-fit > table {
-    width: max-content;
     min-width: max-content;
-    transform: scale(var(--shift-table-scale));
   }
 
   .shift-table-fit > table th,
   .shift-table-fit > table td {
-    padding: 0.25rem;
+    min-width: 2.6rem;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.2;
     white-space: nowrap;
+  }
+
+  .shift-table-fit thead th,
+  .shift-table-fit thead td {
+    background-color: #f8f9fa;
+  }
+
+  .shift-table-fit tbody td {
+    background-color: #fff;
+  }
+
+  .shift-table-fit tfoot td {
+    background-color: #f8f9fa;
+  }
+
+  .shift-table-fit tbody tr.current-user-row > td {
+    background-color: #f3e8ff;
+  }
+
+  .shift-table-fit tbody td.highlight-cell {
+    background-color: #fff3cd;
+  }
+
+  .shift-table-fixed-2 thead tr:first-child > :nth-child(1),
+  .shift-table-fixed-2 tbody tr > :nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    width: var(--shift-sticky-col-1);
+    min-width: var(--shift-sticky-col-1);
+    max-width: var(--shift-sticky-col-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 1px 0 0 #dee2e6;
+  }
+
+  .shift-table-fixed-2 thead tr:first-child > :nth-child(2),
+  .shift-table-fixed-2 tbody tr > :nth-child(2) {
+    position: sticky;
+    left: var(--shift-sticky-col-1);
+    z-index: 3;
+    width: var(--shift-sticky-col-2);
+    min-width: var(--shift-sticky-col-2);
+    max-width: var(--shift-sticky-col-2);
+    box-shadow: 1px 0 0 #dee2e6;
+  }
+
+  .shift-table-fixed-2 thead tr:first-child > :nth-child(1),
+  .shift-table-fixed-2 thead tr:first-child > :nth-child(2) {
+    z-index: 5;
+  }
+
+  .shift-table-fixed-2 tfoot tr > :first-child {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    min-width: calc(var(--shift-sticky-col-1) + var(--shift-sticky-col-2));
+    background-color: #f8f9fa;
+    box-shadow: 1px 0 0 #dee2e6;
+  }
+
+  .shift-table-fixed-3 {
+    --shift-sticky-col-1: 3.25rem;
+    --shift-sticky-col-2: 6rem;
+    --shift-sticky-col-3: 5.75rem;
+  }
+
+  .shift-table-fixed-3 thead tr:first-child > :nth-child(1),
+  .shift-table-fixed-3 tbody tr > :nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    width: var(--shift-sticky-col-1);
+    min-width: var(--shift-sticky-col-1);
+    max-width: var(--shift-sticky-col-1);
+    box-shadow: 1px 0 0 #dee2e6;
+  }
+
+  .shift-table-fixed-3 thead tr:first-child > :nth-child(2),
+  .shift-table-fixed-3 tbody tr > :nth-child(2) {
+    position: sticky;
+    left: var(--shift-sticky-col-1);
+    z-index: 3;
+    width: var(--shift-sticky-col-2);
+    min-width: var(--shift-sticky-col-2);
+    max-width: var(--shift-sticky-col-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 1px 0 0 #dee2e6;
+  }
+
+  .shift-table-fixed-3 thead tr:first-child > :nth-child(3),
+  .shift-table-fixed-3 tbody tr > :nth-child(3) {
+    position: sticky;
+    left: calc(var(--shift-sticky-col-1) + var(--shift-sticky-col-2));
+    z-index: 3;
+    width: var(--shift-sticky-col-3);
+    min-width: var(--shift-sticky-col-3);
+    max-width: var(--shift-sticky-col-3);
+    box-shadow: 1px 0 0 #dee2e6;
+  }
+
+  .shift-table-fixed-3 thead tr:first-child > :nth-child(1),
+  .shift-table-fixed-3 thead tr:first-child > :nth-child(2),
+  .shift-table-fixed-3 thead tr:first-child > :nth-child(3) {
+    z-index: 5;
+  }
+
+  .shift-table-fixed-3 tfoot tr > :first-child {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    min-width: calc(var(--shift-sticky-col-1) + var(--shift-sticky-col-2) + var(--shift-sticky-col-3));
+    background-color: #f8f9fa;
+    box-shadow: 1px 0 0 #dee2e6;
   }
 
   .admin-pdf-frame {
