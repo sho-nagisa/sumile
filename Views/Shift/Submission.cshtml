@@ -14,6 +14,8 @@
     var hasCopyTools = !string.IsNullOrWhiteSpace(weekdayCopySourceLabel)
         || !string.IsNullOrWhiteSpace(previousPeriodCopySourceLabel);
     var japaneseCulture = new CultureInfo("ja-JP");
+    var draftStorageUserKey = ViewBag.CurrentUserCustomId as string ?? "unknown";
+    var draftStoragePeriodKey = selectedPeriodId?.ToString() ?? "none";
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -39,6 +41,14 @@
 <form asp-action="SubmitShifts" method="post" id="shiftForm">
     <input type="hidden" name="periodId" value="@selectedPeriodId" />
     <input type="hidden" name="selectedShifts" id="selectedShifts" />
+
+    <div id="draftNotice" class="alert alert-info d-none align-items-center justify-content-between gap-2 flex-wrap" role="status">
+        <span id="draftNoticeText"></span>
+        <span class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-primary" id="restoreDraftButton">復元する</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="discardDraftButton">削除する</button>
+        </span>
+    </div>
 
     @if (hasCopyTools)
     {
@@ -93,12 +103,16 @@
                     </td>
                     <td class="shift-cell @(morningSelected ? "selected" : "")"
                         data-date="@day.Date.ToString("yyyy-MM-dd")"
-                        data-shift="Morning">
+                        data-date-label="@day.Date.ToLocalTime().ToString("M/d (ddd)", japaneseCulture)"
+                        data-shift="Morning"
+                        data-shift-label="朝">
                         @morningSymbol
                     </td>
                     <td class="shift-cell @(nightSelected ? "selected" : "")"
                         data-date="@day.Date.ToString("yyyy-MM-dd")"
-                        data-shift="Night">
+                        data-date-label="@day.Date.ToLocalTime().ToString("M/d (ddd)", japaneseCulture)"
+                        data-shift="Night"
+                        data-shift-label="夜">
                         @nightSymbol
                     </td>
                 </tr>
@@ -106,13 +120,52 @@
         </tbody>
     </table>
 
-    <button type="submit" class="btn btn-primary">提出</button>
-    <a asp-action="Index" class="btn btn-secondary">戻る</a>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <button type="submit" class="btn btn-primary">提出</button>
+        <button type="button" class="btn btn-outline-primary" id="saveDraftButton">一時保存</button>
+        <button type="button" class="btn btn-outline-danger d-none" id="deleteDraftButton">一時保存を削除</button>
+        <a asp-action="Index" class="btn btn-secondary">戻る</a>
+        <span id="draftStatus" class="text-muted small"></span>
+    </div>
 </form>
+
+<div class="modal fade" id="submitConfirmModal" tabindex="-1" aria-labelledby="submitConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title h5" id="submitConfirmModalLabel">提出内容の確認</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+            </div>
+            <div class="modal-body">
+                <div id="confirmSummary" class="mb-3"></div>
+                <div id="confirmEmptyMessage" class="alert alert-warning mb-0 d-none">
+                    提出するシフトはありません。すべて×として提出されます。
+                </div>
+                <div id="confirmListWrapper" class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>日付</th>
+                                <th>区分</th>
+                                <th>希望</th>
+                            </tr>
+                        </thead>
+                        <tbody id="confirmShiftList"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">修正する</button>
+                <button type="button" class="btn btn-primary" id="confirmSubmitButton">この内容で提出</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
     <script>
         document.addEventListener("DOMContentLoaded", function () {
+            const shiftForm = document.getElementById("shiftForm");
             const shiftCells = document.querySelectorAll(".shift-cell");
             const selectedShiftsInput = document.getElementById("selectedShifts");
             const weekdayCopyShifts = @Html.Raw(weekdayCopyShiftsJson);
@@ -120,6 +173,22 @@
             const copyWeekdayButton = document.getElementById("copyWeekdayShifts");
             const copyPreviousPeriodButton = document.getElementById("copyPreviousPeriodShifts");
             const clearShiftsButton = document.getElementById("clearShifts");
+            const draftStorageKey = "sumile.shiftDraft.@draftStorageUserKey.@draftStoragePeriodKey";
+            const draftNotice = document.getElementById("draftNotice");
+            const draftNoticeText = document.getElementById("draftNoticeText");
+            const restoreDraftButton = document.getElementById("restoreDraftButton");
+            const discardDraftButton = document.getElementById("discardDraftButton");
+            const saveDraftButton = document.getElementById("saveDraftButton");
+            const deleteDraftButton = document.getElementById("deleteDraftButton");
+            const draftStatus = document.getElementById("draftStatus");
+            const confirmModalElement = document.getElementById("submitConfirmModal");
+            const confirmSummary = document.getElementById("confirmSummary");
+            const confirmEmptyMessage = document.getElementById("confirmEmptyMessage");
+            const confirmListWrapper = document.getElementById("confirmListWrapper");
+            const confirmShiftList = document.getElementById("confirmShiftList");
+            const confirmSubmitButton = document.getElementById("confirmSubmitButton");
+            const confirmModal = confirmModalElement ? new bootstrap.Modal(confirmModalElement) : null;
+            let confirmedSubmit = false;
 
             shiftCells.forEach(cell => {
                 cell.addEventListener("click", function () {
@@ -147,6 +216,54 @@
                     clearAllCells();
                     updateSelectedShifts();
                 });
+            }
+
+            if (shiftForm) {
+                shiftForm.addEventListener("submit", function (event) {
+                    updateSelectedShifts();
+
+                    if (confirmedSubmit || !confirmModal) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    renderConfirmation();
+                    confirmModal.show();
+                });
+            }
+
+            if (confirmSubmitButton) {
+                confirmSubmitButton.addEventListener("click", function () {
+                    confirmedSubmit = true;
+                    updateSelectedShifts();
+                    deleteDraft({ silent: true });
+                    shiftForm?.requestSubmit();
+                });
+            }
+
+            if (saveDraftButton) {
+                saveDraftButton.addEventListener("click", saveDraft);
+            }
+
+            if (deleteDraftButton) {
+                deleteDraftButton.addEventListener("click", deleteDraft);
+            }
+
+            if (restoreDraftButton) {
+                restoreDraftButton.addEventListener("click", function () {
+                    const draft = loadDraft();
+                    if (!draft) {
+                        setDraftStatus("復元できる一時保存はありません。");
+                        updateDraftControls();
+                        return;
+                    }
+
+                    restoreDraft(draft);
+                });
+            }
+
+            if (discardDraftButton) {
+                discardDraftButton.addEventListener("click", deleteDraft);
             }
 
             function normalizeSymbol(symbol) {
@@ -193,7 +310,112 @@
                 selectedShiftsInput.value = JSON.stringify(selectedShifts);
             }
 
+            function getSelectedShiftItems() {
+                return [...document.querySelectorAll(".shift-cell.selected")].map(cell => ({
+                    date: cell.dataset.date,
+                    shiftType: cell.dataset.shift,
+                    shiftSymbol: cell.textContent.trim()
+                }));
+            }
+
+            function saveDraft() {
+                updateSelectedShifts();
+
+                const draft = {
+                    savedAt: new Date().toISOString(),
+                    shifts: getSelectedShiftItems()
+                };
+
+                localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+                setDraftStatus("一時保存しました。");
+                updateDraftControls();
+            }
+
+            function loadDraft() {
+                const raw = localStorage.getItem(draftStorageKey);
+                if (!raw) return null;
+
+                try {
+                    const draft = JSON.parse(raw);
+                    return Array.isArray(draft.shifts) ? draft : null;
+                } catch {
+                    return null;
+                }
+            }
+
+            function restoreDraft(draft) {
+                clearAllCells();
+                applyCopy(draft.shifts);
+                setDraftStatus("一時保存から復元しました。");
+                hideDraftNotice();
+            }
+
+            function deleteDraft(options) {
+                localStorage.removeItem(draftStorageKey);
+                updateDraftControls();
+                hideDraftNotice();
+
+                if (!options?.silent) {
+                    setDraftStatus("一時保存を削除しました。");
+                }
+            }
+
+            function updateDraftControls() {
+                const draft = loadDraft();
+                deleteDraftButton?.classList.toggle("d-none", !draft);
+
+                if (!draft) {
+                    hideDraftNotice();
+                    return;
+                }
+
+                const savedAt = new Date(draft.savedAt);
+                const savedAtText = Number.isNaN(savedAt.getTime())
+                    ? ""
+                    : `（${savedAt.toLocaleString("ja-JP")} 保存）`;
+
+                draftNoticeText.textContent = `この募集期間の一時保存があります${savedAtText}。`;
+                draftNotice?.classList.remove("d-none");
+                draftNotice?.classList.add("d-flex");
+            }
+
+            function hideDraftNotice() {
+                draftNotice?.classList.add("d-none");
+                draftNotice?.classList.remove("d-flex");
+            }
+
+            function setDraftStatus(message) {
+                if (!draftStatus) return;
+                draftStatus.textContent = message;
+            }
+
+            function renderConfirmation() {
+                const selectedCells = [...document.querySelectorAll(".shift-cell.selected")];
+                const acceptedCount = selectedCells.filter(cell => cell.textContent.trim() === "〇").length;
+                const wantCount = selectedCells.filter(cell => cell.textContent.trim() === "△").length;
+
+                confirmSummary.textContent = `〇 ${acceptedCount}件 / △ ${wantCount}件`;
+                confirmShiftList.innerHTML = "";
+                confirmEmptyMessage.classList.toggle("d-none", selectedCells.length > 0);
+                confirmListWrapper.classList.toggle("d-none", selectedCells.length === 0);
+
+                selectedCells.forEach(cell => {
+                    const row = document.createElement("tr");
+                    const dateCell = document.createElement("td");
+                    const shiftCell = document.createElement("td");
+                    const symbolCell = document.createElement("td");
+
+                    dateCell.textContent = cell.dataset.dateLabel;
+                    shiftCell.textContent = cell.dataset.shiftLabel;
+                    symbolCell.textContent = cell.textContent.trim();
+
+                    row.append(dateCell, shiftCell, symbolCell);
+                    confirmShiftList.appendChild(row);
+                });
+            }
+
             updateSelectedShifts();
+            updateDraftControls();
         });
     </script>
 }
