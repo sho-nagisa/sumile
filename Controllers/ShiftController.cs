@@ -495,33 +495,6 @@ namespace sumile.Controllers
             return RedirectToAction(nameof(Submission));
         }
 
-        // Temporary debug endpoint (allow anonymous) to inspect shiftdays/submissions counts
-        [AllowAnonymous]
-        [HttpGet]
-        public async Task<IActionResult> DebugCounts(int? periodId)
-        {
-            var allPeriods = await _context.RecruitmentPeriods.OrderByDescending(r => r.Id).ToListAsync();
-            var selectedPeriod = periodId.HasValue
-                ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value)
-                : allPeriods.FirstOrDefault();
-
-            var shiftDays = selectedPeriod != null
-                ? await _context.ShiftDays.Where(d => d.RecruitmentPeriodId == selectedPeriod.Id).OrderBy(d => d.Date).ToListAsync()
-                : new List<ShiftDay>();
-
-            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
-            var submissions = await _context.ShiftSubmissions
-                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
-                .ToListAsync();
-
-            return Json(new
-            {
-                SelectedPeriodId = selectedPeriod?.Id,
-                ShiftDaysCount = shiftDays.Count,
-                ShiftDayIds = shiftDays.Select(d => d.Id).ToList(),
-                SubmissionsCount = submissions.Count
-            });
-        }
     }
     public class ShiftSubmissionViewModel
     {
