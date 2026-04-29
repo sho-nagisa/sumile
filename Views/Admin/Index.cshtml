@@ -1,6 +1,7 @@
 @using System.Globalization
 @using sumile.Models
 @using sumile.Services
+@using sumile.ViewModels
 @inject ShiftStatusDisplayService ShiftDisplay
 
 @{
@@ -23,6 +24,10 @@
     var submittedUserCount = ViewBag.SubmittedUserCount as int? ?? 0;
     var targetUserCount = ViewBag.TargetUserCount as int? ?? 0;
     var unsubmittedUsers = ViewBag.UnsubmittedUsers as List<string> ?? new List<string>();
+    var assignmentSummary = ViewBag.AssignmentSummary as AdminShiftAssignmentSummaryViewModel
+        ?? new AdminShiftAssignmentSummaryViewModel();
+    var userShiftStats = ViewBag.UserShiftStats as List<AdminShiftUserStatViewModel>
+        ?? new List<AdminShiftUserStatViewModel>();
     var shiftPdfUrl = ViewBag.ShiftPdfUrl as string;
     DateTime? shiftPdfUpdatedAt = ViewBag.ShiftPdfUpdatedAt is DateTime pdfUpdatedAt
         ? pdfUpdatedAt
@@ -39,6 +44,14 @@
 @if (TempData["WarningMessage"] != null)
 {
     <div class="alert alert-warning">@TempData["WarningMessage"]</div>
+}
+
+@if (TempData["AutoAssignSummary"] != null)
+{
+    <div class="alert alert-info">
+        <div class="fw-semibold">自動割当結果</div>
+        <div>@TempData["AutoAssignSummary"]</div>
+    </div>
 }
 
 @if (TempData["Error"] != null)
@@ -104,7 +117,13 @@
         <div class="fw-semibold">提出状況: @submittedUserCount / @targetUserCount 人</div>
         @if (unsubmittedUsers.Any())
         {
-            <div class="small mt-1">未提出: @string.Join("、", unsubmittedUsers)</div>
+            <div class="small mt-2 fw-semibold">未提出者一覧</div>
+            <div class="d-flex flex-wrap gap-1 mt-1">
+                @foreach (var userName in unsubmittedUsers)
+                {
+                    <span class="badge bg-light text-dark border">@userName</span>
+                }
+            </div>
         }
         else
         {
@@ -112,6 +131,39 @@
         }
     </div>
 }
+
+<div class="table-responsive mb-4">
+    <table class="table table-sm table-bordered align-middle text-center">
+        <thead class="table-light">
+            <tr>
+                <th>対象枠</th>
+                <th>必要人数</th>
+                <th>割当人数</th>
+                <th>鍵持ち割当</th>
+                <th>人数不足</th>
+                <th>鍵持ち不足</th>
+                <th>超過</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>@assignmentSummary.ShiftCellCount</td>
+                <td>@assignmentSummary.RequiredWorkerTotal</td>
+                <td>@assignmentSummary.AssignedTotal</td>
+                <td>@assignmentSummary.KeyHolderAssignedTotal</td>
+                <td class="@(assignmentSummary.WorkerShortageSlotCount > 0 ? "text-danger fw-semibold" : "")">
+                    @assignmentSummary.WorkerShortageSlotCount
+                    <span class="text-muted small">(@assignmentSummary.WorkerShortageCellCount 枠)</span>
+                </td>
+                <td class="@(assignmentSummary.KeyHolderShortageSlotCount > 0 ? "text-danger fw-semibold" : "")">
+                    @assignmentSummary.KeyHolderShortageSlotCount
+                    <span class="text-muted small">(@assignmentSummary.KeyHolderShortageCellCount 枠)</span>
+                </td>
+                <td>@assignmentSummary.OverAssignedSlotCount</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
 
 <div class="admin-pdf-preview mb-4">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
@@ -143,6 +195,54 @@
             この期間のPDFはまだ出力されていません。
         </div>
     }
+</div>
+
+<div class="mb-4">
+    <h3 class="h5">ユーザー別 割当状況</h3>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle text-center">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>ユーザー</th>
+                    <th>鍵</th>
+                    <th>提出</th>
+                    <th>希望数</th>
+                    <th>割当数</th>
+                    <th>鍵持ち割当</th>
+                    <th>空白数</th>
+                    <th>空白率</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var stat in userShiftStats)
+                {
+                    <tr>
+                        <td>@stat.CustomId</td>
+                        <td class="text-start">@stat.Name</td>
+                        <td>@(stat.UserShiftRole == UserShiftRole.KeyHolder ? "★" : "")</td>
+                        <td>
+                            @if (stat.HasSubmitted)
+                            {
+                                <span class="badge bg-success">済</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">未</span>
+                            }
+                        </td>
+                        <td>@stat.RequestedCount</td>
+                        <td>@stat.AssignedCount</td>
+                        <td>@stat.KeyHolderAssignedCount</td>
+                        <td>@stat.BlankCount</td>
+                        <td>
+                            @(stat.RequestedCount == 0 ? "-" : $"{stat.BlankRate * 100:0.#}%")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <script>

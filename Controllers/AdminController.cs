@@ -170,6 +170,68 @@ namespace sumile.Controllers
                 .Select(u => string.IsNullOrWhiteSpace(u.Name) ? u.CustomId.ToString() : u.Name)
                 .ToList();
 
+            var assignmentSummary = new AdminShiftAssignmentSummaryViewModel
+            {
+                ShiftCellCount = table.RequiredWorkersList.Count(w => w > 0),
+                RequiredWorkerTotal = table.RequiredWorkersList.Sum(),
+                AssignedTotal = table.TotalAcceptedList.Sum(),
+                KeyHolderAssignedTotal = table.KeyHolderAcceptedList.Sum(),
+                WorkerShortageCellCount = table.RemainingWorkersList.Count(v => v < 0),
+                WorkerShortageSlotCount = table.RemainingWorkersList.Where(v => v < 0).Sum(v => -v),
+                OverAssignedSlotCount = table.RemainingWorkersList.Where(v => v > 0).Sum()
+            };
+
+            for (var i = 0; i < table.RequiredWorkersList.Count; i++)
+            {
+                var requiredWorkers = table.RequiredWorkersList[i];
+                if (requiredWorkers <= 0)
+                {
+                    continue;
+                }
+
+                var requiredKeyHolders = (int)Math.Ceiling(requiredWorkers / 2.0);
+                var keyHolderAssigned = i < table.KeyHolderAcceptedList.Count
+                    ? table.KeyHolderAcceptedList[i]
+                    : 0;
+                var keyHolderShortage = requiredKeyHolders - keyHolderAssigned;
+                if (keyHolderShortage > 0)
+                {
+                    assignmentSummary.KeyHolderShortageCellCount++;
+                    assignmentSummary.KeyHolderShortageSlotCount += keyHolderShortage;
+                }
+            }
+
+            var submissionsByUser = table.Submissions
+                .Where(s => targetUserIdSet.Contains(s.UserId))
+                .GroupBy(s => s.UserId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            var userStats = targetUsers
+                .Select(user =>
+                {
+                    submissionsByUser.TryGetValue(user.Id, out var userSubmissions);
+                    userSubmissions ??= new List<ShiftSubmission>();
+
+                    var requestedCount = userSubmissions.Count(s => s.ShiftStatus != ShiftState.None);
+
+                    return new AdminShiftUserStatViewModel
+                    {
+                        UserId = user.Id,
+                        CustomId = user.CustomId,
+                        Name = string.IsNullOrWhiteSpace(user.Name) ? user.CustomId.ToString() : user.Name,
+                        UserShiftRole = user.UserShiftRole,
+                        HasSubmitted = submittedUserIdSet.Contains(user.Id),
+                        RequestedCount = requestedCount,
+                        AssignedCount = userSubmissions.Count(s =>
+                            s.ShiftStatus == ShiftState.Accepted ||
+                            s.ShiftStatus == ShiftState.KeyHolder),
+                        KeyHolderAssignedCount = userSubmissions.Count(s => s.ShiftStatus == ShiftState.KeyHolder),
+                        BlankCount = userSubmissions.Count(s => s.ShiftStatus == ShiftState.NotAccepted)
+                    };
+                })
+                .OrderBy(s => s.CustomId)
+                .ToList();
+
             var diffLogs = await _context.ShiftEditLogs
                 .Where(log => shiftDayIds.Contains(log.ShiftDayId))
                 .Select(log => new
@@ -197,6 +259,8 @@ namespace sumile.Controllers
             ViewBag.SubmittedUserCount = submittedUserIdSet.Count(id => targetUserIdSet.Contains(id));
             ViewBag.TargetUserCount = targetUsers.Count;
             ViewBag.UnsubmittedUsers = unsubmittedUsers;
+            ViewBag.AssignmentSummary = assignmentSummary;
+            ViewBag.UserShiftStats = userStats;
 
             // ===== その他 View 用データ =====
             ViewBag.RecruitmentPeriods = allPeriods;
@@ -872,6 +936,8 @@ namespace sumile.Controllers
 
             var result = await _autoShiftAssignmentService.AssignAsync(periodId, DateTime.UtcNow);
             TempData["SuccessMessage"] = "シフトの自動割り当てが完了しました。";
+            TempData["AutoAssignSummary"] =
+                $"対象 {result.ShiftCellCount}枠 / 必要 {result.RequiredWorkerTotal}人 / 割当 {result.AssignedCount}人 / 鍵持ち {result.KeyHolderAssignedCount}人 / 人数不足 {result.WorkerShortageSlots}人 / 鍵持ち不足 {result.KeyHolderShortageSlots}人";
             if (result.KeyHolderShortages.Any() || result.WorkerShortages.Any())
             {
                 var messages = new List<string>();

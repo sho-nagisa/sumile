@@ -86,6 +86,9 @@ namespace sumile.Services
 
                 foreach (ShiftType type in Enum.GetValues(typeof(ShiftType)))
                 {
+                    result.ShiftCellCount++;
+                    result.RequiredWorkerTotal += requiredWorkers;
+
                     var cellCandidates = candidates
                         .Where(s => s.ShiftDayId == shiftDay.Id && s.ShiftType == type)
                         .ToList();
@@ -131,6 +134,9 @@ namespace sumile.Services
                             Required = requiredWorkers
                         });
                     }
+
+                    result.AssignedCount += selected.Count;
+                    result.KeyHolderAssignedCount += selected.Count(IsKeyHolderCandidate);
 
                     foreach (var submission in selected)
                     {
@@ -220,8 +226,14 @@ namespace sumile.Services
 
     public class AutoShiftAssignmentResult
     {
+        public int ShiftCellCount { get; set; }
+        public int RequiredWorkerTotal { get; set; }
+        public int AssignedCount { get; set; }
+        public int KeyHolderAssignedCount { get; set; }
         public List<AutoShiftAssignmentShortage> KeyHolderShortages { get; set; } = new();
         public List<AutoShiftAssignmentShortage> WorkerShortages { get; set; } = new();
+        public int KeyHolderShortageSlots => KeyHolderShortages.Sum(s => Math.Max(0, s.Required - s.Actual));
+        public int WorkerShortageSlots => WorkerShortages.Sum(s => Math.Max(0, s.Required - s.Actual));
     }
 
     public class AutoShiftAssignmentShortage

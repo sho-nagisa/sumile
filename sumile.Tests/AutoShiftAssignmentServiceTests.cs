@@ -64,6 +64,12 @@ public class AutoShiftAssignmentServiceTests
 
         Assert.Empty(result.KeyHolderShortages);
         Assert.Empty(result.WorkerShortages);
+        Assert.Equal(2, result.ShiftCellCount);
+        Assert.Equal(4, result.RequiredWorkerTotal);
+        Assert.Equal(4, result.AssignedCount);
+        Assert.Equal(2, result.KeyHolderAssignedCount);
+        Assert.Equal(0, result.WorkerShortageSlots);
+        Assert.Equal(0, result.KeyHolderShortageSlots);
 
         var submissions = await context.ShiftSubmissions.ToListAsync();
         foreach (ShiftType shiftType in Enum.GetValues(typeof(ShiftType)))
