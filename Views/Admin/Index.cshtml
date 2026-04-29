@@ -20,6 +20,9 @@
     var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
     var requiredWorkersList = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
     var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
+    var submittedUserCount = ViewBag.SubmittedUserCount as int? ?? 0;
+    var targetUserCount = ViewBag.TargetUserCount as int? ?? 0;
+    var unsubmittedUsers = ViewBag.UnsubmittedUsers as List<string> ?? new List<string>();
     var shiftPdfUrl = ViewBag.ShiftPdfUrl as string;
     DateTime? shiftPdfUpdatedAt = ViewBag.ShiftPdfUpdatedAt is DateTime pdfUpdatedAt
         ? pdfUpdatedAt
@@ -49,6 +52,7 @@
     <a href="@Url.Action("ShiftEditLogs", "Admin")" class="btn btn-info">編集履歴</a>
 
     <form asp-action="AutoAssignShifts" asp-controller="Admin" method="post" style="display:inline;">
+        @Html.AntiForgeryToken()
         <input type="hidden" name="periodId" value="@selectedPeriodId" />
         <button type="submit" class="btn btn-warning" onclick="return confirm('この期間のシフトを自動割り当てしますか？');">
             シフト自動割り当て
@@ -84,6 +88,7 @@
         if (selectedPeriod != null)
         {
             <form asp-action="ToggleSubmissionStatus" asp-controller="Admin" method="post" style="display:inline;">
+                @Html.AntiForgeryToken()
                 <input type="hidden" name="id" value="@selectedPeriod.Id" />
                 <button type="submit" class="btn btn-outline-warning ms-2">
                     @(selectedPeriod.IsOpen ? "締切にする" : "募集中に戻す")
@@ -92,6 +97,21 @@
         }
     }
 </div>
+
+@if (selectedPeriodId != null)
+{
+    <div class="alert @(unsubmittedUsers.Any() ? "alert-warning" : "alert-success")">
+        <div class="fw-semibold">提出状況: @submittedUserCount / @targetUserCount 人</div>
+        @if (unsubmittedUsers.Any())
+        {
+            <div class="small mt-1">未提出: @string.Join("、", unsubmittedUsers)</div>
+        }
+        else
+        {
+            <div class="small mt-1">対象ユーザーは全員提出済みです。</div>
+        }
+    </div>
+}
 
 <div class="admin-pdf-preview mb-4">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">

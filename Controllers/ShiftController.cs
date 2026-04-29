@@ -290,16 +290,15 @@ namespace sumile.Controllers
             var currentUser = await _userManager.GetUserAsync(User);
             if (currentUser == null) return RedirectToAction("Login", "Account");
 
-            var openPeriods = await _context.RecruitmentPeriods
-                .Where(p => p.IsOpen)
+            var allPeriods = await _context.RecruitmentPeriods
                 .OrderByDescending(p => p.StartDate)
                 .ToListAsync();
 
-            if (!periodId.HasValue && openPeriods.Any())
-                periodId = openPeriods.First().Id;
+            if (!periodId.HasValue)
+                periodId = allPeriods.FirstOrDefault(p => p.IsOpen)?.Id ?? allPeriods.FirstOrDefault()?.Id;
 
             var selectedPeriod = periodId.HasValue
-                ? openPeriods.FirstOrDefault(p => p.Id == periodId.Value)
+                ? allPeriods.FirstOrDefault(p => p.Id == periodId.Value)
                 : null;
 
             var shiftDays = await GetShiftDaysForPeriod(periodId);
@@ -315,9 +314,11 @@ namespace sumile.Controllers
 
             var model = new ShiftSubmissionPageViewModel
             {
-                Periods = openPeriods,
+                Periods = allPeriods,
                 SelectedPeriodId = periodId,
                 SelectedPeriod = selectedPeriod,
+                IsSubmissionOpen = selectedPeriod?.IsOpen == true,
+                HasSubmitted = existingSubmissions.Any(),
                 ShiftDays = shiftDays,
                 ExistingSubmissions = existingSubmissions,
                 CurrentUserCustomId = currentUser.CustomId > 0 ? currentUser.CustomId.ToString() : "No user",
@@ -332,11 +333,26 @@ namespace sumile.Controllers
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> SubmitShifts([FromForm] string selectedShifts,[FromForm] int periodId)
         {
             var currentUser = await _userManager.GetUserAsync(User);
             if (currentUser == null)
                 return RedirectToAction("Login", "Account");
+
+            var period = await _context.RecruitmentPeriods
+                .FirstOrDefaultAsync(p => p.Id == periodId);
+            if (period == null)
+            {
+                TempData["ErrorMessage"] = "募集期間が見つかりません。";
+                return RedirectToAction("Submission");
+            }
+
+            if (!period.IsOpen)
+            {
+                TempData["ErrorMessage"] = "この募集期間は締め切られているため提出できません。";
+                return RedirectToAction("Submission", new { periodId });
+            }
 
             var userTypeStr = HttpContext.Session.GetString("UserType") ?? "Normal";
             UserType userType = Enum.TryParse(userTypeStr, out UserType ut) ? ut : UserType.Normal;
@@ -348,7 +364,13 @@ namespace sumile.Controllers
                 userType,
                 DateTime.UtcNow);
 
-            TempData["SuccessMessage"] = "シフトが提出されました。";
+            var submittedItems = string.IsNullOrWhiteSpace(selectedShifts)
+                ? 0
+                : (JsonConvert.DeserializeObject<List<ShiftSubmissionViewModel>>(selectedShifts) ?? new()).Count;
+
+            TempData["SuccessMessage"] = submittedItems == 0
+                ? "帰省・希望なしとして提出しました。"
+                : "シフトが提出されました。";
             return RedirectToAction("Submission", new { periodId });
         }
 

@@ -1,6 +1,8 @@
 ﻿@model IEnumerable<sumile.Models.RecruitmentPeriod>
 @{
     ViewData["Title"] = "募集期間一覧（状態切り替え）";
+    var targetUserCount = ViewBag.TargetUserCount as int? ?? 0;
+    var submittedCounts = ViewBag.SubmittedCounts as Dictionary<int, int> ?? new Dictionary<int, int>();
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -12,6 +14,7 @@
             <th>開始日</th>
             <th>終了日</th>
             <th>状態</th>
+            <th>提出状況</th>
             <th>操作</th>
         </tr>
     </thead>
@@ -33,7 +36,19 @@
                     }
                 </td>
                 <td>
+                    @{
+                        var submittedCount = submittedCounts.TryGetValue(period.Id, out var count) ? count : 0;
+                        var unsubmittedCount = Math.Max(targetUserCount - submittedCount, 0);
+                    }
+                    <span>@submittedCount / @targetUserCount 人</span>
+                    @if (unsubmittedCount > 0)
+                    {
+                        <span class="text-danger small">（未提出 @unsubmittedCount 人）</span>
+                    }
+                </td>
+                <td>
                     <form asp-action="ToggleSubmissionStatus" method="post" style="display:inline;">
+                        @Html.AntiForgeryToken()
                         <input type="hidden" name="id" value="@period.Id" />
                         <button type="submit" class="btn btn-sm btn-warning">
                             @(period.IsOpen ? "締切にする" : "募集中に戻す")

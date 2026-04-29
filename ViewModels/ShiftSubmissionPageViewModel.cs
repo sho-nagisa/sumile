@@ -10,6 +10,8 @@ namespace sumile.ViewModels
         public List<RecruitmentPeriod> Periods { get; set; } = new();
         public int? SelectedPeriodId { get; set; }
         public RecruitmentPeriod? SelectedPeriod { get; set; }
+        public bool IsSubmissionOpen { get; set; }
+        public bool HasSubmitted { get; set; }
         public string CurrentUserCustomId { get; set; } = "unknown";
         public string CurrentUserName { get; set; } = "No user";
         public string WeekdayCopyShiftsJson { get; set; } = "[]";

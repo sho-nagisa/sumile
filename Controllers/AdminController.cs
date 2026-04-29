@@ -140,21 +140,36 @@ namespace sumile.Controllers
 
             var selectedPeriodIdValue = selectedPeriod.Id;
 
-            ViewBag.Users = await _context.Users
+            var users = await _context.Users
                 .OrderBy(u => u.CustomId)
                 .Select(u => new
                 {
                     u.Id,
                     u.CustomId,
                     u.Name,
-                    u.UserShiftRole
+                    u.UserShiftRole,
+                    u.IsAdmin
                 })
                 .ToListAsync();
+            ViewBag.Users = users;
 
 
             // ===== ★ ここから Service 利用 =====
             var table = await _shiftTableService.BuildAsync(selectedPeriodIdValue);
             var shiftDayIds = table.ShiftDays.Select(d => d.Id).ToList();
+            var submittedUserIds = await _context.ShiftSubmissions
+                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
+                .Select(s => s.UserId)
+                .Distinct()
+                .ToListAsync();
+            var submittedUserIdSet = submittedUserIds.ToHashSet();
+            var targetUsers = users.Where(u => !u.IsAdmin).ToList();
+            var targetUserIdSet = targetUsers.Select(u => u.Id).ToHashSet();
+            var unsubmittedUsers = targetUsers
+                .Where(u => !submittedUserIdSet.Contains(u.Id))
+                .Select(u => string.IsNullOrWhiteSpace(u.Name) ? u.CustomId.ToString() : u.Name)
+                .ToList();
+
             var diffLogs = await _context.ShiftEditLogs
                 .Where(log => shiftDayIds.Contains(log.ShiftDayId))
                 .Select(log => new
@@ -179,6 +194,9 @@ namespace sumile.Controllers
             ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
             ViewBag.RequiredWorkersList = table.RequiredWorkersList;
             ViewBag.RemainingWorkersList = table.RemainingWorkersList;
+            ViewBag.SubmittedUserCount = submittedUserIdSet.Count(id => targetUserIdSet.Contains(id));
+            ViewBag.TargetUserCount = targetUsers.Count;
+            ViewBag.UnsubmittedUsers = unsubmittedUsers;
 
             // ===== その他 View 用データ =====
             ViewBag.RecruitmentPeriods = allPeriods;
@@ -634,6 +652,7 @@ namespace sumile.Controllers
             }
         }
        [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> ToggleSubmissionStatus(int id)
         {
             if (!await IsAdminUser()) return Unauthorized();
@@ -699,6 +718,34 @@ namespace sumile.Controllers
             var periods = await _context.RecruitmentPeriods
                 .OrderByDescending(p => p.StartDate)
                 .ToListAsync();
+
+            var targetUserIds = await _context.Users
+                .Where(u => !u.IsAdmin)
+                .Select(u => u.Id)
+                .ToListAsync();
+            var targetUserIdSet = targetUserIds.ToHashSet();
+            var targetUserCount = targetUserIds.Count;
+            var periodIds = periods.Select(p => p.Id).ToList();
+            var shiftDays = await _context.ShiftDays
+                .Where(d => periodIds.Contains(d.RecruitmentPeriodId))
+                .Select(d => new { d.Id, d.RecruitmentPeriodId })
+                .ToListAsync();
+            var periodByShiftDayId = shiftDays.ToDictionary(d => d.Id, d => d.RecruitmentPeriodId);
+            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
+            var submittedUserIds = await _context.ShiftSubmissions
+                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
+                .Select(s => new { s.UserId, s.ShiftDayId })
+                .Distinct()
+                .ToListAsync();
+
+            var submittedCounts = submittedUserIds
+                .Where(s => targetUserIdSet.Contains(s.UserId))
+                .Where(s => periodByShiftDayId.ContainsKey(s.ShiftDayId))
+                .GroupBy(s => periodByShiftDayId[s.ShiftDayId])
+                .ToDictionary(g => g.Key, g => g.Select(x => x.UserId).Distinct().Count());
+
+            ViewBag.TargetUserCount = targetUserCount;
+            ViewBag.SubmittedCounts = submittedCounts;
 
             return View(periods);
         }
@@ -818,6 +865,7 @@ namespace sumile.Controllers
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> AutoAssignShifts(int periodId)
         {
             if (!await IsAdminUser()) return Unauthorized();

@@ -10,6 +10,16 @@
 
 <h2>@ViewData["Title"]</h2>
 
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success">@TempData["SuccessMessage"]</div>
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger">@TempData["ErrorMessage"]</div>
+}
+
 @if (Model.Periods.Any())
 {
     <form method="get" asp-action="Submission" class="mb-3">
@@ -19,13 +29,26 @@
                 @foreach (var period in Model.Periods)
                 {
                     <option value="@period.Id" selected="@(period.Id == Model.SelectedPeriodId)">
-                        @period.StartDate.ToString("yyyy/MM/dd") ～ @period.EndDate.ToString("MM/dd")
+                        @period.StartDate.ToString("yyyy/MM/dd") ～ @period.EndDate.ToString("MM/dd") @(period.IsOpen ? "（募集中）" : "（締切）")
                     </option>
                 }
             </select>
             <button type="submit" class="btn btn-secondary">表示</button>
         </div>
     </form>
+}
+
+@if (Model.SelectedPeriod == null)
+{
+    <div class="alert alert-info">募集期間がまだ登録されていません。</div>
+}
+else if (!Model.IsSubmissionOpen)
+{
+    <div class="alert alert-warning">この募集期間は締め切られています。提出内容の確認のみできます。</div>
+}
+else if (Model.HasSubmitted)
+{
+    <div class="alert alert-info">この募集期間は提出済みです。再提出すると内容が上書きされます。</div>
 }
 
 <form asp-action="SubmitShifts" method="post" id="shiftForm">
@@ -40,7 +63,7 @@
         </span>
     </div>
 
-    @if (Model.HasCopyTools)
+    @if (Model.IsSubmissionOpen && Model.HasCopyTools)
     {
         <div class="border rounded p-3 mb-3 bg-light">
             <div class="fw-semibold mb-2">10日ブロックのコピー</div>
@@ -60,7 +83,7 @@
                     <span class="text-muted small align-self-center">@Model.PreviousPeriodCopySourceLabel</span>
                 }
                 <button type="button" class="btn btn-outline-danger" id="clearShifts">
-                    すべて×にする
+                    すべて×にする（帰省）
                 </button>
             </div>
         </div>
@@ -95,14 +118,16 @@
                         data-date="@day.Date.ToString("yyyy-MM-dd")"
                         data-date-label="@day.Date.ToLocalTime().ToString("M/d (ddd)", japaneseCulture)"
                         data-shift="Morning"
-                        data-shift-label="朝">
+                        data-shift-label="朝"
+                        aria-disabled="@(!Model.IsSubmissionOpen)">
                         @morningSymbol
                     </td>
                     <td class="shift-cell @(nightSelected ? "selected" : "")"
                         data-date="@day.Date.ToString("yyyy-MM-dd")"
                         data-date-label="@day.Date.ToLocalTime().ToString("M/d (ddd)", japaneseCulture)"
                         data-shift="Night"
-                        data-shift-label="夜">
+                        data-shift-label="夜"
+                        aria-disabled="@(!Model.IsSubmissionOpen)">
                         @nightSymbol
                     </td>
                 </tr>
@@ -111,9 +136,9 @@
     </table>
 
     <div class="d-flex flex-wrap gap-2 align-items-center">
-        <button type="submit" class="btn btn-primary">提出</button>
-        <button type="button" class="btn btn-outline-primary" id="saveDraftButton">一時保存</button>
-        <button type="button" class="btn btn-outline-danger d-none" id="deleteDraftButton">一時保存を削除</button>
+        <button type="submit" class="btn btn-primary" disabled="@(!Model.IsSubmissionOpen)">提出</button>
+        <button type="button" class="btn btn-outline-primary" id="saveDraftButton" disabled="@(!Model.IsSubmissionOpen)">一時保存</button>
+        <button type="button" class="btn btn-outline-danger d-none" id="deleteDraftButton" disabled="@(!Model.IsSubmissionOpen)">一時保存を削除</button>
         <a asp-action="Index" class="btn btn-secondary">戻る</a>
         <span id="draftStatus" class="text-muted small"></span>
     </div>
@@ -129,7 +154,7 @@
             <div class="modal-body">
                 <div id="confirmSummary" class="mb-3"></div>
                 <div id="confirmEmptyMessage" class="alert alert-warning mb-0 d-none">
-                    提出するシフトはありません。すべて×として提出されます。
+                    提出するシフトはありません。帰省・希望なしとして提出されます。
                 </div>
                 <div id="confirmListWrapper" class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0">
@@ -178,10 +203,15 @@
             const confirmShiftList = document.getElementById("confirmShiftList");
             const confirmSubmitButton = document.getElementById("confirmSubmitButton");
             const confirmModal = confirmModalElement ? new bootstrap.Modal(confirmModalElement) : null;
+            const isSubmissionOpen = @Json.Serialize(Model.IsSubmissionOpen);
             let confirmedSubmit = false;
 
             shiftCells.forEach(cell => {
                 cell.addEventListener("click", function () {
+                    if (!isSubmissionOpen) {
+                        return;
+                    }
+
                     let currentSymbol = this.textContent.trim();
                     let nextSymbol = currentSymbol === "×" ? "〇" : currentSymbol === "〇" ? "△" : "×";
                     setCellSymbol(this, nextSymbol);
