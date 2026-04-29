@@ -63,6 +63,9 @@ builder.Services.AddScoped<ShiftPdfService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
 builder.Services.AddScoped<ShiftTableService>();
 builder.Services.AddScoped<ShiftStatusDisplayService>();
+builder.Services.AddScoped<ShiftSubmissionService>();
+builder.Services.AddScoped<AutoShiftAssignmentService>();
+builder.Services.AddScoped<ShiftExchangeWorkflowService>();
 
 // �J�X�^���t�H���g���]���o�o�^
 GlobalFontSettings.FontResolver = new CustomFontResolver();

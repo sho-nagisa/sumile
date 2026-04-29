@@ -2,10 +2,6 @@
 
 namespace sumile.Models
 {
-    /// <summary>
-    /// 1日につき、朝/夜などのシフト枠を表す
-    /// このファイルは要らない可能性大/リファクタリング対象
-    /// </summary>
     public class Shift
     {
         public int Id { get; set; }

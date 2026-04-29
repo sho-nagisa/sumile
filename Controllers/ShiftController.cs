@@ -21,17 +21,20 @@ namespace sumile.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ShiftPdfService _pdfService;
         private readonly ShiftTableService _shiftTableService;
+        private readonly ShiftSubmissionService _shiftSubmissionService;
 
         public ShiftController(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         ShiftPdfService pdfService,
-        ShiftTableService shiftTableService)
+        ShiftTableService shiftTableService,
+        ShiftSubmissionService shiftSubmissionService)
         {
             _context = context;
             _userManager = userManager;
             _pdfService = pdfService;
             _shiftTableService = shiftTableService;
+            _shiftSubmissionService = shiftSubmissionService;
         }
 
         private async Task<List<ShiftDay>> GetShiftDaysForPeriod(int? periodId)
@@ -335,64 +338,15 @@ namespace sumile.Controllers
             if (currentUser == null)
                 return RedirectToAction("Login", "Account");
 
-            var userId = currentUser.Id;
             var userTypeStr = HttpContext.Session.GetString("UserType") ?? "Normal";
             UserType userType = Enum.TryParse(userTypeStr, out UserType ut) ? ut : UserType.Normal;
-            var userShiftRole = currentUser.UserShiftRole;
 
-            // 対象期間の ShiftDay を全取得
-            var shiftDays = await _context.ShiftDays
-                .Where(d => d.RecruitmentPeriodId == periodId)
-                .ToListAsync();
-
-            // View から送られてきた選択データ
-            var selectedList = string.IsNullOrEmpty(selectedShifts)
-                ? new List<ShiftSubmissionViewModel>()
-                : JsonConvert.DeserializeObject<List<ShiftSubmissionViewModel>>(selectedShifts)
-                ?? new List<ShiftSubmissionViewModel>();
-
-            // 既存データは一旦削除（この期間・このユーザー）
-            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
-            var existing = await _context.ShiftSubmissions
-                .Where(s => s.UserId == userId && shiftDayIds.Contains(s.ShiftDayId))
-                .ToListAsync();
-
-            _context.ShiftSubmissions.RemoveRange(existing);
-
-            var submissions = new List<ShiftSubmission>();
-
-            foreach (var day in shiftDays)
-            {
-                foreach (ShiftType shiftType in Enum.GetValues(typeof(ShiftType)))
-                {
-                    // View から該当セルが送られてきているか
-                    var selected = selectedList.FirstOrDefault(s =>
-                        DateTime.Parse(s.Date).Date == day.Date.Date &&
-                        s.ShiftType == shiftType);
-
-                    ShiftState status = selected?.ShiftSymbol switch
-                    {
-                        "〇" => ShiftState.Accepted,
-                        "△" => ShiftState.WantToGiveAway,
-                        _   => ShiftState.None   // ← ★ 未選択は必ず None
-                    };
-
-                    submissions.Add(new ShiftSubmission
-                    {
-                        UserId = userId,
-                        ShiftDayId = day.Id,
-                        ShiftType = shiftType,
-                        ShiftStatus = status,
-                        IsSelected = status != ShiftState.None,
-                        SubmittedAt = DateTime.UtcNow,
-                        UserType = userType,
-                        UserShiftRole = userShiftRole
-                    });
-                }
-            }
-
-            _context.ShiftSubmissions.AddRange(submissions);
-            await _context.SaveChangesAsync();
+            await _shiftSubmissionService.SubmitShiftsAsync(
+                currentUser,
+                selectedShifts,
+                periodId,
+                userType,
+                DateTime.UtcNow);
 
             TempData["SuccessMessage"] = "シフトが提出されました。";
             return RedirectToAction("Submission", new { periodId });

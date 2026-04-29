@@ -13,11 +13,16 @@ public class ExchangeController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly ShiftPdfService _pdfService;
+    private readonly ShiftExchangeWorkflowService _exchangeWorkflowService;
 
-    public ExchangeController(ApplicationDbContext context, ShiftPdfService pdfService)
+    public ExchangeController(
+        ApplicationDbContext context,
+        ShiftPdfService pdfService,
+        ShiftExchangeWorkflowService exchangeWorkflowService)
     {
         _context = context;
         _pdfService = pdfService;
+        _exchangeWorkflowService = exchangeWorkflowService;
     }
 
     private static bool IsOpenStatus(string status) =>
@@ -26,10 +31,6 @@ public class ExchangeController : Controller
     private static bool IsPendingApprovalStatus(string status) =>
         status == ShiftExchange.StatusPendingApproval ||
         status == ShiftExchange.StatusAcceptedLegacy;
-
-    private static bool IsCancelableByRequesterStatus(string status) =>
-        IsOpenStatus(status) ||
-        IsPendingApprovalStatus(status);
 
     private async Task<bool> IsAdminUser(string? userId)
     {
@@ -161,25 +162,11 @@ public class ExchangeController : Controller
         var userId = HttpContext.Session.GetString("UserId");
         if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
 
-        var exchange = await _context.ShiftExchanges.FirstOrDefaultAsync(e => e.Id == id);
-        if (exchange == null)
-            return NotFound("交換募集が見つかりません。");
+        var result = await _exchangeWorkflowService.CancelRequestAsync(id, userId, DateTime.UtcNow);
+        if (result.NotFound) return NotFound(result.Message);
+        if (result.Forbidden) return Forbid();
 
-        if (exchange.RequestedByUserId != userId)
-            return Forbid();
-
-        if (!IsCancelableByRequesterStatus(exchange.Status))
-        {
-            TempData["Message"] = "この交換募集は取り消せません。";
-            return RedirectToAction(nameof(Index));
-        }
-
-        exchange.Status = ShiftExchange.StatusCanceled;
-        exchange.UpdatedAt = DateTime.UtcNow;
-        _context.ShiftExchanges.Update(exchange);
-        await _context.SaveChangesAsync();
-
-        TempData["Message"] = "交換募集を取り消しました。";
+        TempData["Message"] = result.Message;
         return RedirectToAction(nameof(Index));
     }
 
@@ -190,25 +177,10 @@ public class ExchangeController : Controller
         var userId = HttpContext.Session.GetString("UserId");
         if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
 
-        var exchange = await _context.ShiftExchanges.FirstOrDefaultAsync(e => e.Id == id);
-        if (exchange == null)
-            return NotFound("交換募集が見つかりません。");
+        var result = await _exchangeWorkflowService.CancelApplicationAsync(id, userId, DateTime.UtcNow);
+        if (result.NotFound) return NotFound(result.Message);
 
-        if (!IsPendingApprovalStatus(exchange.Status) || exchange.AcceptedByUserId != userId)
-        {
-            TempData["Message"] = "この応募は取り消せません。";
-            return RedirectToAction(nameof(Index));
-        }
-
-        exchange.AcceptedByUserId = null;
-        exchange.AcceptedAt = null;
-        exchange.AcceptedShiftSubmissionId = null;
-        exchange.Status = ShiftExchange.StatusOpen;
-        exchange.UpdatedAt = DateTime.UtcNow;
-        _context.ShiftExchanges.Update(exchange);
-        await _context.SaveChangesAsync();
-
-        TempData["Message"] = "応募を取り消しました。";
+        TempData["Message"] = result.Message;
         return RedirectToAction(nameof(Index));
     }
 
@@ -220,16 +192,10 @@ public class ExchangeController : Controller
         if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
         if (!await IsAdminUser(userId)) return Unauthorized();
 
-        var exchange = await _context.ShiftExchanges.FirstOrDefaultAsync(e => e.Id == exchangeId);
-        if (exchange == null || !IsPendingApprovalStatus(exchange.Status))
-            return NotFound("承認待ちの交換が見つかりません。");
+        var result = await _exchangeWorkflowService.RejectExchangeAsync(exchangeId, DateTime.UtcNow);
+        if (result.NotFound) return NotFound(result.Message);
 
-        exchange.Status = ShiftExchange.StatusRejected;
-        exchange.UpdatedAt = DateTime.UtcNow;
-        _context.ShiftExchanges.Update(exchange);
-        await _context.SaveChangesAsync();
-
-        TempData["Message"] = "交換を却下しました。";
+        TempData["Message"] = result.Message;
         return RedirectToAction(nameof(Index));
     }
 

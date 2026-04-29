@@ -5,6 +5,8 @@ VisualStudioVersion = 17.8.34525.116
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sumile", "sumile.csproj", "{0413DFDE-FF70-495A-ABB8-3C1ED6EFF2F9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sumile.Tests", "sumile.Tests\sumile.Tests.csproj", "{D878A6DD-59A0-4813-AA2B-C58330EBE36A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{0413DFDE-FF70-495A-ABB8-3C1ED6EFF2F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0413DFDE-FF70-495A-ABB8-3C1ED6EFF2F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0413DFDE-FF70-495A-ABB8-3C1ED6EFF2F9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D878A6DD-59A0-4813-AA2B-C58330EBE36A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D878A6DD-59A0-4813-AA2B-C58330EBE36A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D878A6DD-59A0-4813-AA2B-C58330EBE36A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D878A6DD-59A0-4813-AA2B-C58330EBE36A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,240 @@
+using Microsoft.EntityFrameworkCore;
+using sumile.Data;
+using sumile.Models;
+
+namespace sumile.Services
+{
+    public class AutoShiftAssignmentService
+    {
+        private readonly ApplicationDbContext _context;
+
+        public AutoShiftAssignmentService(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<AutoShiftAssignmentResult> AssignAsync(int periodId, DateTime assignedAt)
+        {
+            var shiftDays = await _context.ShiftDays
+                .Where(d => d.RecruitmentPeriodId == periodId)
+                .OrderBy(d => d.Date)
+                .ToListAsync();
+
+            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
+
+            var workloads = await _context.DailyWorkloads
+                .Where(w => shiftDayIds.Contains(w.ShiftDayId))
+                .ToDictionaryAsync(w => w.ShiftDayId);
+
+            var submissions = await _context.ShiftSubmissions
+                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
+                .Include(s => s.ShiftDay)
+                .ToListAsync();
+
+            var managedSubmissions = submissions
+                .Where(s => IsAssignableForAutoAssign(s.ShiftStatus))
+                .ToList();
+
+            var candidates = managedSubmissions
+                .Where(s => s.UserShiftRole != UserShiftRole.New)
+                .ToList();
+
+            var submittedCountByUser = submissions
+                .Where(s => s.UserShiftRole != UserShiftRole.New)
+                .Where(s => CountsAsSubmittedForAutoAssign(s.ShiftStatus))
+                .GroupBy(s => s.UserId)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var candidateCountByUser = candidates
+                .GroupBy(s => s.UserId)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var userStats = submittedCountByUser
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => new AutoAssignUserStats
+                    {
+                        SubmittedCount = kvp.Value,
+                        CandidateCount = candidateCountByUser.TryGetValue(kvp.Key, out var candidateCount)
+                            ? candidateCount
+                            : 0
+                    });
+
+            foreach (var submission in managedSubmissions)
+            {
+                submission.IsSelected = false;
+                submission.SubmittedAt = assignedAt;
+                submission.ShiftStatus = ShiftState.NotAccepted;
+                submission.UserType = UserType.AdminUpdated;
+                _context.ShiftSubmissions.Update(submission);
+            }
+
+            var result = new AutoShiftAssignmentResult();
+
+            foreach (var shiftDay in shiftDays)
+            {
+                if (!workloads.TryGetValue(shiftDay.Id, out var workload))
+                {
+                    continue;
+                }
+
+                var requiredWorkers = ResolveRequiredWorkers(workload);
+                if (requiredWorkers <= 0)
+                {
+                    continue;
+                }
+
+                foreach (ShiftType type in Enum.GetValues(typeof(ShiftType)))
+                {
+                    var cellCandidates = candidates
+                        .Where(s => s.ShiftDayId == shiftDay.Id && s.ShiftType == type)
+                        .ToList();
+
+                    var selected = new List<ShiftSubmission>();
+                    var requiredKeyHolders = (int)Math.Ceiling(requiredWorkers / 2.0);
+
+                    var selectedKeyHolders = PickBalancedCandidates(
+                        cellCandidates.Where(IsKeyHolderCandidate),
+                        requiredKeyHolders,
+                        userStats);
+
+                    selected.AddRange(selectedKeyHolders);
+
+                    if (selectedKeyHolders.Count < requiredKeyHolders)
+                    {
+                        result.KeyHolderShortages.Add(new AutoShiftAssignmentShortage
+                        {
+                            Date = shiftDay.Date,
+                            ShiftType = type,
+                            Actual = selectedKeyHolders.Count,
+                            Required = requiredKeyHolders
+                        });
+                    }
+
+                    var stillNeeded = requiredWorkers - selected.Count;
+                    if (stillNeeded > 0)
+                    {
+                        selected.AddRange(PickBalancedCandidates(
+                            cellCandidates.Where(s => !selected.Contains(s)),
+                            stillNeeded,
+                            userStats,
+                            preferNonKeyHoldersWhenTied: true));
+                    }
+
+                    if (selected.Count < requiredWorkers)
+                    {
+                        result.WorkerShortages.Add(new AutoShiftAssignmentShortage
+                        {
+                            Date = shiftDay.Date,
+                            ShiftType = type,
+                            Actual = selected.Count,
+                            Required = requiredWorkers
+                        });
+                    }
+
+                    foreach (var submission in selected)
+                    {
+                        submission.IsSelected = true;
+                        submission.SubmittedAt = assignedAt;
+                        submission.ShiftStatus = IsKeyHolderCandidate(submission)
+                            ? ShiftState.KeyHolder
+                            : ShiftState.Accepted;
+                        submission.UserType = UserType.AdminUpdated;
+                        _context.ShiftSubmissions.Update(submission);
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            return result;
+        }
+
+        private static bool CountsAsSubmittedForAutoAssign(ShiftState state)
+        {
+            return state != ShiftState.None;
+        }
+
+        private static bool IsAssignableForAutoAssign(ShiftState state)
+        {
+            return state == ShiftState.Accepted ||
+                   state == ShiftState.NotAccepted ||
+                   state == ShiftState.KeyHolder;
+        }
+
+        private static bool IsKeyHolderCandidate(ShiftSubmission submission)
+        {
+            return submission.UserShiftRole == UserShiftRole.KeyHolder ||
+                   submission.ShiftStatus == ShiftState.KeyHolder;
+        }
+
+        private static int ResolveRequiredWorkers(DailyWorkload workload)
+        {
+            return workload.RequiredWorkers > 0
+                ? workload.RequiredWorkers
+                : DailyWorkload.CalculateRequiredWorkers(workload.RequiredCount);
+        }
+
+        private static List<ShiftSubmission> PickBalancedCandidates(
+            IEnumerable<ShiftSubmission> candidates,
+            int count,
+            Dictionary<string, AutoAssignUserStats> userStats,
+            bool preferNonKeyHoldersWhenTied = false)
+        {
+            var selected = new List<ShiftSubmission>();
+            var remaining = candidates.ToList();
+
+            while (selected.Count < count && remaining.Any())
+            {
+                var next = remaining
+                    .OrderByDescending(s => userStats.TryGetValue(s.UserId, out var stats) ? stats.BlankRate : 0)
+                    .ThenBy(s => userStats.TryGetValue(s.UserId, out var stats) ? stats.AssignedCount : 0)
+                    .ThenByDescending(s => userStats.TryGetValue(s.UserId, out var stats) ? stats.SubmittedCount : 0)
+                    .ThenBy(s => preferNonKeyHoldersWhenTied && IsKeyHolderCandidate(s) ? 1 : 0)
+                    .ThenBy(s => s.UserId)
+                    .First();
+
+                selected.Add(next);
+                remaining.Remove(next);
+
+                if (userStats.TryGetValue(next.UserId, out var selectedStats))
+                {
+                    selectedStats.AssignedCount++;
+                }
+            }
+
+            return selected;
+        }
+
+        private class AutoAssignUserStats
+        {
+            public int SubmittedCount { get; set; }
+            public int CandidateCount { get; set; }
+            public int AssignedCount { get; set; }
+
+            public double BlankRate =>
+                SubmittedCount <= 0
+                    ? 0
+                    : (CandidateCount - AssignedCount) / (double)SubmittedCount;
+        }
+    }
+
+    public class AutoShiftAssignmentResult
+    {
+        public List<AutoShiftAssignmentShortage> KeyHolderShortages { get; set; } = new();
+        public List<AutoShiftAssignmentShortage> WorkerShortages { get; set; } = new();
+    }
+
+    public class AutoShiftAssignmentShortage
+    {
+        public DateTime Date { get; set; }
+        public ShiftType ShiftType { get; set; }
+        public int Actual { get; set; }
+        public int Required { get; set; }
+
+        public string ToDisplayText()
+        {
+            var shiftTypeLabel = ShiftType == ShiftType.Morning ? "上" : "敷";
+            return $"{Date:MM/dd} {shiftTypeLabel}: {Actual}/{Required}";
+        }
+    }
+}

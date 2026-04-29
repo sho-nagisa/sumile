@@ -28,4 +28,10 @@
     <Folder Include="wwwroot\shift_pdfs\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="sumile.Tests\**\*.cs" />
+    <Content Remove="sumile.Tests\**" />
+    <None Remove="sumile.Tests\**" />
+  </ItemGroup>
+
 </Project>
