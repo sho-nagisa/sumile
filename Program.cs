@@ -66,6 +66,9 @@ builder.Services.AddScoped<ShiftStatusDisplayService>();
 builder.Services.AddScoped<ShiftSubmissionService>();
 builder.Services.AddScoped<AutoShiftAssignmentService>();
 builder.Services.AddScoped<ShiftExchangeWorkflowService>();
+builder.Services.AddScoped<AdminDashboardService>();
+builder.Services.AddScoped<AdminSubmissionPeriodService>();
+builder.Services.AddScoped<AdminShiftEditService>();
 
 // �J�X�^���t�H���g���]���o�o�^
 GlobalFontSettings.FontResolver = new CustomFontResolver();

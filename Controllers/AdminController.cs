@@ -22,19 +22,28 @@ namespace sumile.Controllers
         private readonly ShiftPdfService _pdfService;
         private readonly ShiftTableService _shiftTableService;
         private readonly AutoShiftAssignmentService _autoShiftAssignmentService;
+        private readonly AdminDashboardService _adminDashboardService;
+        private readonly AdminSubmissionPeriodService _adminSubmissionPeriodService;
+        private readonly AdminShiftEditService _adminShiftEditService;
 
         public AdminController(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         ShiftPdfService pdfService,
         ShiftTableService shiftTableService,
-        AutoShiftAssignmentService autoShiftAssignmentService)
+        AutoShiftAssignmentService autoShiftAssignmentService,
+        AdminDashboardService adminDashboardService,
+        AdminSubmissionPeriodService adminSubmissionPeriodService,
+        AdminShiftEditService adminShiftEditService)
         {
             _context = context;
             _userManager = userManager;
             _pdfService = pdfService;
             _shiftTableService = shiftTableService;
             _autoShiftAssignmentService = autoShiftAssignmentService;
+            _adminDashboardService = adminDashboardService;
+            _adminSubmissionPeriodService = adminSubmissionPeriodService;
+            _adminShiftEditService = adminShiftEditService;
         }
 
         private async Task<bool> IsAdminUser()
@@ -56,67 +65,28 @@ namespace sumile.Controllers
             return $"{userId}_{shiftDayId}_{(int)shiftType}";
         }
 
-        private static bool IsSelectedState(ShiftState state)
+        private void SetDashboardViewBag(AdminDashboardViewModel dashboard)
         {
-            return state != ShiftState.None && state != ShiftState.NotAccepted;
-        }
-
-        private static ShiftState GetInitialState(
-            IReadOnlyDictionary<string, ShiftState> initialStateByKey,
-            string userId,
-            int shiftDayId,
-            ShiftType shiftType)
-        {
-            return initialStateByKey.TryGetValue(GetShiftCellKey(userId, shiftDayId, shiftType), out var state)
-                ? state
-                : ShiftState.None;
-        }
-
-        private static string ConvertShiftStateToLabel(ShiftState state)
-        {
-            return state switch
-            {
-                ShiftState.Accepted => "〇",
-                ShiftState.NotAccepted => "空白",
-                ShiftState.WantToGiveAway => "△",
-                ShiftState.KeyHolder => "赤丸",
-                _ => "×"
-            };
-        }
-
-        private static string ConvertShiftTypeToLabel(ShiftType shiftType)
-        {
-            return shiftType == ShiftType.Morning ? "上" : "敷";
-        }
-
-        private static string BuildEditLogNote(
-            bool isInitialConfirmation,
-            ShiftState initialState,
-            ShiftState oldState,
-            ShiftState newState,
-            string? reason)
-        {
-            string actionLabel;
-
-            if (isInitialConfirmation)
-            {
-                actionLabel = initialState == ShiftState.None ? "新規作成" : "初回確定";
-            }
-            else if (newState == initialState)
-            {
-                actionLabel = "初期状態に合わせて変更";
-            }
-            else
-            {
-                actionLabel = "変更";
-            }
-
-            if (string.IsNullOrWhiteSpace(reason))
-            {
-                return actionLabel;
-            }
-
-            return $"{actionLabel}: {reason.Trim()}";
+            ViewBag.Users = dashboard.Users;
+            ViewBag.Dates = dashboard.Table.ShiftDays;
+            ViewBag.Submissions = dashboard.Table.Submissions;
+            ViewBag.Workloads = dashboard.Table.Workloads;
+            ViewBag.WorkloadCells = dashboard.Table.WorkloadCells;
+            ViewBag.ShiftColumns = dashboard.Table.ShiftColumns;
+            ViewBag.TotalAcceptedList = dashboard.Table.TotalAcceptedList;
+            ViewBag.KeyHolderAcceptedList = dashboard.Table.KeyHolderAcceptedList;
+            ViewBag.RequiredWorkersList = dashboard.Table.RequiredWorkersList;
+            ViewBag.RemainingWorkersList = dashboard.Table.RemainingWorkersList;
+            ViewBag.SubmittedUserCount = dashboard.SubmittedUserCount;
+            ViewBag.TargetUserCount = dashboard.TargetUserCount;
+            ViewBag.UnsubmittedUsers = dashboard.UnsubmittedUsers;
+            ViewBag.AssignmentSummary = dashboard.AssignmentSummary;
+            ViewBag.UserShiftStats = dashboard.UserShiftStats;
+            ViewBag.DiffKeys = dashboard.DiffKeys;
+            ViewBag.RecruitmentPeriods = dashboard.RecruitmentPeriods;
+            ViewBag.SelectedPeriodId = dashboard.SelectedPeriodId;
+            ViewBag.ShiftPdfUrl = dashboard.ShiftPdfUrl;
+            ViewBag.ShiftPdfUpdatedAt = dashboard.ShiftPdfUpdatedAt;
         }
 
         [HttpGet]
@@ -124,157 +94,14 @@ namespace sumile.Controllers
         {
             if (!await IsAdminUser()) return Unauthorized();
 
-            var allPeriods = await _context.RecruitmentPeriods
-                .OrderByDescending(r => r.Id)
-                .ToListAsync();
-
-            var selectedPeriod = periodId.HasValue
-                ? allPeriods.FirstOrDefault(r => r.Id == periodId.Value)
-                : allPeriods.FirstOrDefault();
-
-            if (selectedPeriod == null)
+            var dashboard = await _adminDashboardService.BuildAsync(periodId);
+            if (dashboard == null)
             {
                 TempData["Error"] = "募集期間が選択されていません。";
                 return RedirectToAction("SetRecruitmentPeriod");
             }
 
-            var selectedPeriodIdValue = selectedPeriod.Id;
-
-            var users = await _context.Users
-                .OrderBy(u => u.CustomId)
-                .Select(u => new
-                {
-                    u.Id,
-                    u.CustomId,
-                    u.Name,
-                    u.UserShiftRole,
-                    u.IsAdmin
-                })
-                .ToListAsync();
-            ViewBag.Users = users;
-
-
-            // ===== ★ ここから Service 利用 =====
-            var table = await _shiftTableService.BuildAsync(selectedPeriodIdValue);
-            var shiftDayIds = table.ShiftDays.Select(d => d.Id).ToList();
-            var submittedUserIds = await _context.ShiftSubmissions
-                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
-                .Select(s => s.UserId)
-                .Distinct()
-                .ToListAsync();
-            var submittedUserIdSet = submittedUserIds.ToHashSet();
-            var targetUsers = users.Where(u => !u.IsAdmin).ToList();
-            var targetUserIdSet = targetUsers.Select(u => u.Id).ToHashSet();
-            var unsubmittedUsers = targetUsers
-                .Where(u => !submittedUserIdSet.Contains(u.Id))
-                .Select(u => string.IsNullOrWhiteSpace(u.Name) ? u.CustomId.ToString() : u.Name)
-                .ToList();
-
-            var assignmentSummary = new AdminShiftAssignmentSummaryViewModel
-            {
-                ShiftCellCount = table.RequiredWorkersList.Count(w => w > 0),
-                RequiredWorkerTotal = table.RequiredWorkersList.Sum(),
-                AssignedTotal = table.TotalAcceptedList.Sum(),
-                KeyHolderAssignedTotal = table.KeyHolderAcceptedList.Sum(),
-                WorkerShortageCellCount = table.RemainingWorkersList.Count(v => v < 0),
-                WorkerShortageSlotCount = table.RemainingWorkersList.Where(v => v < 0).Sum(v => -v),
-                OverAssignedSlotCount = table.RemainingWorkersList.Where(v => v > 0).Sum()
-            };
-
-            for (var i = 0; i < table.RequiredWorkersList.Count; i++)
-            {
-                var requiredWorkers = table.RequiredWorkersList[i];
-                if (requiredWorkers <= 0)
-                {
-                    continue;
-                }
-
-                var requiredKeyHolders = (int)Math.Ceiling(requiredWorkers / 2.0);
-                var keyHolderAssigned = i < table.KeyHolderAcceptedList.Count
-                    ? table.KeyHolderAcceptedList[i]
-                    : 0;
-                var keyHolderShortage = requiredKeyHolders - keyHolderAssigned;
-                if (keyHolderShortage > 0)
-                {
-                    assignmentSummary.KeyHolderShortageCellCount++;
-                    assignmentSummary.KeyHolderShortageSlotCount += keyHolderShortage;
-                }
-            }
-
-            var submissionsByUser = table.Submissions
-                .Where(s => targetUserIdSet.Contains(s.UserId))
-                .GroupBy(s => s.UserId)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-            var userStats = targetUsers
-                .Select(user =>
-                {
-                    submissionsByUser.TryGetValue(user.Id, out var userSubmissions);
-                    userSubmissions ??= new List<ShiftSubmission>();
-
-                    var requestedCount = userSubmissions.Count(s => s.ShiftStatus != ShiftState.None);
-
-                    return new AdminShiftUserStatViewModel
-                    {
-                        UserId = user.Id,
-                        CustomId = user.CustomId,
-                        Name = string.IsNullOrWhiteSpace(user.Name) ? user.CustomId.ToString() : user.Name,
-                        UserShiftRole = user.UserShiftRole,
-                        HasSubmitted = submittedUserIdSet.Contains(user.Id),
-                        RequestedCount = requestedCount,
-                        AssignedCount = userSubmissions.Count(s =>
-                            s.ShiftStatus == ShiftState.Accepted ||
-                            s.ShiftStatus == ShiftState.KeyHolder),
-                        KeyHolderAssignedCount = userSubmissions.Count(s => s.ShiftStatus == ShiftState.KeyHolder),
-                        BlankCount = userSubmissions.Count(s => s.ShiftStatus == ShiftState.NotAccepted)
-                    };
-                })
-                .OrderBy(s => s.CustomId)
-                .ToList();
-
-            var diffLogs = await _context.ShiftEditLogs
-                .Where(log => shiftDayIds.Contains(log.ShiftDayId))
-                .Select(log => new
-                {
-                    log.TargetUserId,
-                    log.ShiftDayId,
-                    log.ShiftType
-                })
-                .Distinct()
-                .ToListAsync();
-
-            var diffKeySet = new HashSet<string>(
-                diffLogs.Select(k => $"{k.TargetUserId}_{k.ShiftDayId}_{(int)k.ShiftType}")
-            );
-            // =====service からのデータ=====
-            ViewBag.Dates = table.ShiftDays;
-            ViewBag.Submissions = table.Submissions;
-            ViewBag.Workloads = table.Workloads;
-            ViewBag.WorkloadCells = table.WorkloadCells;
-            ViewBag.ShiftColumns = table.ShiftColumns;
-            ViewBag.TotalAcceptedList = table.TotalAcceptedList;
-            ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
-            ViewBag.RequiredWorkersList = table.RequiredWorkersList;
-            ViewBag.RemainingWorkersList = table.RemainingWorkersList;
-            ViewBag.SubmittedUserCount = submittedUserIdSet.Count(id => targetUserIdSet.Contains(id));
-            ViewBag.TargetUserCount = targetUsers.Count;
-            ViewBag.UnsubmittedUsers = unsubmittedUsers;
-            ViewBag.AssignmentSummary = assignmentSummary;
-            ViewBag.UserShiftStats = userStats;
-
-            // ===== その他 View 用データ =====
-            ViewBag.RecruitmentPeriods = allPeriods;
-            ViewBag.SelectedPeriodId = selectedPeriodIdValue;
-
-            var pdfUrl = await _pdfService.EnsureShiftPdfAsync(selectedPeriodIdValue);
-            var pdfPath = _pdfService.GetShiftPdfPhysicalPath(selectedPeriodIdValue);
-            if (System.IO.File.Exists(pdfPath))
-            {
-                var updatedAt = System.IO.File.GetLastWriteTime(pdfPath);
-                ViewBag.ShiftPdfUrl = $"{pdfUrl}?v={updatedAt.Ticks}";
-                ViewBag.ShiftPdfUpdatedAt = updatedAt;
-            }
-
+            SetDashboardViewBag(dashboard);
             return View();
         }
 
@@ -411,22 +238,7 @@ namespace sumile.Controllers
         public async Task<IActionResult> SetRecruitmentPeriod()
         {
             if (!await IsAdminUser()) return Unauthorized();
-            var latest = await _context.RecruitmentPeriods.OrderByDescending(r => r.Id).FirstOrDefaultAsync();
-            if (latest == null)
-            {
-                latest = new RecruitmentPeriod
-                {
-                    StartDate = DateTime.Today,
-                    EndDate = DateTime.Today.AddDays(9)
-                };
-            }
-
-            var model = new RecruitmentPeriodViewModel
-            {
-                StartDate = latest.StartDate,
-                EndDate = latest.EndDate
-            };
-
+            var model = await _adminSubmissionPeriodService.BuildDefaultPeriodModelAsync();
             return View(model);
         }
 
@@ -440,32 +252,7 @@ namespace sumile.Controllers
                 return View(model);
             }
 
-            var startUtc = DateTime.SpecifyKind(model.StartDate, DateTimeKind.Utc);
-            var endUtc = DateTime.SpecifyKind(model.EndDate, DateTimeKind.Utc);
-
-            var newRecruitment = new RecruitmentPeriod
-            {
-                StartDate = startUtc,
-                EndDate = endUtc,
-                IsOpen = true // ← 必要なら開放フラグもここでON
-            };
-
-            _context.RecruitmentPeriods.Add(newRecruitment);
-            await _context.SaveChangesAsync(); // ← IDが確定される
-
-            var days = new List<ShiftDay>();
-            for (var date = startUtc.Date; date <= endUtc.Date; date = date.AddDays(1))
-            {
-                days.Add(new ShiftDay
-                {
-                    Date = date,
-                    RecruitmentPeriodId = newRecruitment.Id
-                });
-            }
-
-            _context.ShiftDays.AddRange(days);
-            await _context.SaveChangesAsync();
-
+            await _adminSubmissionPeriodService.CreatePeriodAsync(model);
             return RedirectToAction(nameof(Index));
         }
 
@@ -559,154 +346,18 @@ namespace sumile.Controllers
                     });
                 }
 
-                if (request?.ShiftUpdates == null || !request.ShiftUpdates.Any())
-                    return Json(new { success = false, error = "シフト更新データが空です。" });
-
-                var logs = new List<ShiftEditLog>();
                 var adminUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(adminUserId))
                     return Json(new { success = false, error = "管理者のユーザーIDが取得できませんでした。" });
 
-                var trimmedReason = request.Reason?.Trim();
+                var result = await _adminShiftEditService.UpdateShiftsAsync(
+                    request,
+                    periodId,
+                    adminUserId,
+                    DateTime.UtcNow);
+                if (!result.Success)
+                    return Json(new { success = false, error = result.ErrorMessage });
 
-                var shiftDays = await _context.ShiftDays
-                    .Where(d => d.RecruitmentPeriodId == periodId)
-                    .ToListAsync();
-                var shiftDayDict = shiftDays.ToDictionary(d => d.Date.Date, d => d.Id);
-
-                var backups = await _context.SubmitBackups
-                    .Where(b => b.RecruitmentPeriodId == periodId)
-                    .ToListAsync();
-
-                var initialStateByKey = backups
-                    .GroupBy(b => GetShiftCellKey(b.UserId, b.ShiftDayId, b.ShiftType))
-                    .ToDictionary(
-                        g => g.Key,
-                        g => g.OrderBy(b => b.BackedUpAt).First().ShiftStatus);
-
-                var existingSubmissions = await _context.ShiftSubmissions
-                    .Where(s => shiftDayDict.Values.Contains(s.ShiftDayId))
-                    .ToListAsync();
-
-                var hasInitialConfirmation = await _context.ShiftEditLogs
-                    .AnyAsync(l => shiftDayDict.Values.Contains(l.ShiftDayId));
-
-                var submissionByKey = existingSubmissions
-                    .GroupBy(s => GetShiftCellKey(s.UserId, s.ShiftDayId, s.ShiftType))
-                    .ToDictionary(
-                        g => g.Key,
-                        g => g
-                            .OrderByDescending(s => s.SubmittedAt ?? DateTime.MinValue)
-                            .ThenByDescending(s => s.Id)
-                            .First());
-
-                foreach (var shift in request.ShiftUpdates)
-                {
-                    if (shift == null || string.IsNullOrEmpty(shift.UserId) || string.IsNullOrEmpty(shift.Date))
-                        continue;
-                    if (!Enum.IsDefined(typeof(ShiftType), shift.ShiftType))
-                        continue;
-                    if (!DateTime.TryParse(shift.Date, out DateTime parsedDate))
-                        continue;
-
-                    var dateUtc = parsedDate.Date;
-                    if (!shiftDayDict.TryGetValue(dateUtc, out var shiftDayId))
-                        continue;
-
-                    ShiftState newState;
-                    if (shift.ShiftState.HasValue && Enum.IsDefined(typeof(ShiftState), shift.ShiftState.Value))
-                    {
-                        newState = (ShiftState)shift.ShiftState.Value;
-                    }
-                    else
-                    {
-                        newState = shift.ShiftStatus switch
-                        {
-                            "〇" => ShiftState.Accepted,
-                            "△" => ShiftState.WantToGiveAway,
-                            "🔴" => ShiftState.KeyHolder,
-                            "×" => ShiftState.None,
-                            ""  => ShiftState.NotAccepted,
-                            _   => ShiftState.None
-                        };
-                    }
-
-
-                    ShiftType shiftType = (ShiftType)shift.ShiftType;
-                    var submissionKey = GetShiftCellKey(shift.UserId, shiftDayId, shiftType);
-
-                    submissionByKey.TryGetValue(submissionKey, out var existing);
-                    var currentState = existing?.ShiftStatus ?? ShiftState.None;
-                    if (currentState == newState)
-                    {
-                        continue;
-                    }
-
-                    var initialState = GetInitialState(initialStateByKey, shift.UserId, shiftDayId, shiftType);
-                    var note = BuildEditLogNote(hasInitialConfirmation, initialState, currentState, newState, trimmedReason);
-
-                    if (existing == null)
-                    {
-                        if (newState == ShiftState.None)
-                        {
-                            continue;
-                        }
-
-                        var targetUser = await _userManager.FindByIdAsync(shift.UserId);
-                        var userRole = targetUser?.UserShiftRole ?? UserShiftRole.Normal;
-
-                        var newSubmission = new ShiftSubmission
-                        {
-                            UserId = shift.UserId,
-                            ShiftDayId = shiftDayId,
-                            ShiftType = shiftType,
-                            IsSelected = IsSelectedState(newState),
-                            SubmittedAt = DateTime.UtcNow,
-                            ShiftStatus = newState,
-                            UserType = UserType.AdminUpdated,
-                            UserShiftRole = userRole
-                        };
-                        _context.ShiftSubmissions.Add(newSubmission);
-                        submissionByKey[submissionKey] = newSubmission;
-
-                        logs.Add(new ShiftEditLog
-                        {
-                            AdminUserId = adminUserId,
-                            TargetUserId = shift.UserId,
-                            ShiftDayId = shiftDayId,
-                            ShiftType = shiftType,
-                            OldState = ShiftState.None,
-                            NewState = newState,
-                            EditDate = DateTime.UtcNow,
-                            Note = note
-                        });
-                    }
-                    else
-                    {
-                        logs.Add(new ShiftEditLog
-                        {
-                            AdminUserId = adminUserId,
-                            TargetUserId = shift.UserId,
-                            ShiftDayId = shiftDayId,
-                            ShiftType = shiftType,
-                            OldState = existing.ShiftStatus,
-                            NewState = newState,
-                            EditDate = DateTime.UtcNow,
-                            Note = note
-                        });
-
-                        existing.ShiftStatus = newState;
-                        existing.IsSelected = IsSelectedState(newState);
-                        existing.SubmittedAt = DateTime.UtcNow;
-                        existing.UserType = UserType.AdminUpdated;
-                        _context.ShiftSubmissions.Update(existing);
-                    }
-                }
-
-                if (logs.Any())
-                    _context.ShiftEditLogs.AddRange(logs);
-
-                await _context.SaveChangesAsync();
                 await _pdfService.GenerateShiftPdfAsync(periodId);
                 return Json(new { success = true });
             }
@@ -715,62 +366,17 @@ namespace sumile.Controllers
                 return Json(new { success = false, error = ex.InnerException?.Message ?? ex.Message });
             }
         }
-       [HttpPost]
+        [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ToggleSubmissionStatus(int id)
         {
             if (!await IsAdminUser()) return Unauthorized();
 
-            var period = await _context.RecruitmentPeriods.FindAsync(id);
-            if (period == null)
+            var toggled = await _adminSubmissionPeriodService.ToggleSubmissionStatusAsync(id, DateTime.UtcNow);
+            if (!toggled)
             {
                 return NotFound();
             }
-
-            // ===== 締切にする瞬間のみバックアップ =====
-            if (period.IsOpen)
-            {
-                // 対象期間の ShiftDay
-                var shiftDayIds = await _context.ShiftDays
-                    .Where(d => d.RecruitmentPeriodId == id)
-                    .Select(d => d.Id)
-                    .ToListAsync();
-
-                // ① 既存バックアップは初期提出状態として固定し、上書きしない
-                var existingBackups = await _context.SubmitBackups
-                    .Where(b => b.RecruitmentPeriodId == id)
-                    .ToListAsync();
-
-                var existingBackupKeys = existingBackups
-                    .Select(b => GetShiftCellKey(b.UserId, b.ShiftDayId, b.ShiftType))
-                    .ToHashSet();
-
-                // ② 現在の提出済みシフトを取得
-                var submissions = await _context.ShiftSubmissions
-                    .Where(s => shiftDayIds.Contains(s.ShiftDayId))
-                    .ToListAsync();
-
-                // ③ Backup 作成。既存キーは初期状態を守るため再作成しない。
-                var backups = submissions
-                    .Where(s => !existingBackupKeys.Contains(GetShiftCellKey(s.UserId, s.ShiftDayId, s.ShiftType)))
-                    .Select(s => new SubmitBackup
-                    {
-                        RecruitmentPeriodId = id,
-                        UserId = s.UserId,
-                        ShiftDayId = s.ShiftDayId,
-                        ShiftType = s.ShiftType,
-                        ShiftStatus = s.ShiftStatus,
-                        BackedUpAt = DateTime.UtcNow
-                    })
-                    .ToList();
-
-                _context.SubmitBackups.AddRange(backups);
-            }
-
-            // ===== 募集状態トグル =====
-            period.IsOpen = !period.IsOpen;
-            _context.RecruitmentPeriods.Update(period);
-            await _context.SaveChangesAsync();
 
             return RedirectToAction("Index", "Admin");
         }
@@ -779,39 +385,8 @@ namespace sumile.Controllers
         public async Task<IActionResult> ManageSubmissionPeriods()
         {
             if (!await IsAdminUser()) return Unauthorized();
-            var periods = await _context.RecruitmentPeriods
-                .OrderByDescending(p => p.StartDate)
-                .ToListAsync();
-
-            var targetUserIds = await _context.Users
-                .Where(u => !u.IsAdmin)
-                .Select(u => u.Id)
-                .ToListAsync();
-            var targetUserIdSet = targetUserIds.ToHashSet();
-            var targetUserCount = targetUserIds.Count;
-            var periodIds = periods.Select(p => p.Id).ToList();
-            var shiftDays = await _context.ShiftDays
-                .Where(d => periodIds.Contains(d.RecruitmentPeriodId))
-                .Select(d => new { d.Id, d.RecruitmentPeriodId })
-                .ToListAsync();
-            var periodByShiftDayId = shiftDays.ToDictionary(d => d.Id, d => d.RecruitmentPeriodId);
-            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
-            var submittedUserIds = await _context.ShiftSubmissions
-                .Where(s => shiftDayIds.Contains(s.ShiftDayId))
-                .Select(s => new { s.UserId, s.ShiftDayId })
-                .Distinct()
-                .ToListAsync();
-
-            var submittedCounts = submittedUserIds
-                .Where(s => targetUserIdSet.Contains(s.UserId))
-                .Where(s => periodByShiftDayId.ContainsKey(s.ShiftDayId))
-                .GroupBy(s => periodByShiftDayId[s.ShiftDayId])
-                .ToDictionary(g => g.Key, g => g.Select(x => x.UserId).Distinct().Count());
-
-            ViewBag.TargetUserCount = targetUserCount;
-            ViewBag.SubmittedCounts = submittedCounts;
-
-            return View(periods);
+            var model = await _adminSubmissionPeriodService.BuildPeriodListAsync();
+            return View(model);
         }
 
         [HttpGet]///※１
@@ -958,21 +533,5 @@ namespace sumile.Controllers
             return RedirectToAction("Index", new { periodId });
         }
 
-    }
-
-    public class ShiftUpdateRequest
-    {
-        public List<ShiftUpdateModel> ShiftUpdates { get; set; } = new();
-        public string? Reason { get; set; }
-    }
-
-    public class ShiftUpdateModel
-    {
-        public string UserId { get; set; } = string.Empty;
-        public string Date { get; set; } = string.Empty;
-        public int ShiftType { get; set; }
-        public int? ShiftState { get; set; }
-        public string ShiftStatus { get; set; } = string.Empty;
-        public int RecruitmentPeriodId { get; set; }
     }
 }
