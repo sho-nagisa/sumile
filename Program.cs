@@ -13,18 +13,18 @@ using sumile.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- ���ϐ��� `.env` ����ǂݍ��ށi���[�J���J���p�j ---
+// --- 環境変数を `.env` から読み込む（ローカル開発用） ---
 Env.Load();
 
-// ���ϐ� `DB_CONNECTION_STRING` ���擾
+// 環境変数 `DB_CONNECTION_STRING` を取得
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 if (string.IsNullOrEmpty(connectionString))
 {
-    throw new InvalidOperationException("DB_CONNECTION_STRING ���ϐ����ݒ肳��Ă��܂���B");
+    throw new InvalidOperationException("DB_CONNECTION_STRING 環境変数が設定されていません。");
 }
 builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 
-// --- �T�[�r�X�o�^ ---
+// --- サービス登録 ---
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -43,7 +43,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
-// �Z�b�V�����ݒ�
+// セッション設定
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(30);
@@ -72,12 +72,12 @@ builder.Services.AddScoped<AdminDashboardService>();
 builder.Services.AddScoped<AdminSubmissionPeriodService>();
 builder.Services.AddScoped<AdminShiftEditService>();
 
-// �J�X�^���t�H���g���]���o�o�^
+// カスタムフォントのリゾルバー登録
 GlobalFontSettings.FontResolver = new CustomFontResolver();
 
 var app = builder.Build();
 
-// --- HTTP �p�C�v���C���ݒ� ---
+// --- HTTP パイプライン設定 ---
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -88,7 +88,7 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
-// �Z�L�����e�B�w�b�_
+// セキュリティヘッダー
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
