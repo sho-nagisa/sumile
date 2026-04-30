@@ -126,6 +126,7 @@
         return state switch
         {
             ShiftState.Accepted => "〇",
+            ShiftState.KeyHolder => "〇",
             ShiftState.WantToGiveAway => "△",
             ShiftState.NotAccepted => "×",
             _ => "×"
@@ -134,6 +135,8 @@
 
     bool IsSelectable(ShiftSubmission? sub)
     {
-        return sub?.ShiftStatus == ShiftState.Accepted || sub?.ShiftStatus == ShiftState.WantToGiveAway;
+        return sub?.ShiftStatus == ShiftState.Accepted ||
+               sub?.ShiftStatus == ShiftState.WantToGiveAway ||
+               sub?.ShiftStatus == ShiftState.KeyHolder;
     }
 }
