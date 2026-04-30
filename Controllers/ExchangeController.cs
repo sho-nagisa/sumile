@@ -24,10 +24,7 @@ public class ExchangeController : Controller
         if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
 
         var model = await _exchangePageService.BuildCreateAsync(userId);
-        ViewBag.ShiftsByPeriod = model.ShiftsByPeriod;
-        ViewBag.TargetUsers = model.TargetUsers;
-
-        return View();
+        return View(model);
     }
 
     [HttpPost]
@@ -143,12 +140,7 @@ public class ExchangeController : Controller
         var model = await _exchangePageService.BuildIndexAsync(currentUserId, relatedOnly);
         if (model == null) return RedirectToAction("Login", "Account");
 
-        ViewBag.CurrentUserId = model.CurrentUserId;
-        ViewBag.CurrentUserRole = model.CurrentUserRole;
-        ViewBag.IsAdmin = model.IsAdmin;
-        ViewBag.RelatedOnly = model.RelatedOnly;
-
-        return View(model.Exchanges);
+        return View(model);
     }
 
     [HttpPost]

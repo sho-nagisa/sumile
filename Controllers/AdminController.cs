@@ -57,11 +57,6 @@ namespace sumile.Controllers
             return isAdmin;
         }
 
-        private static string GetShiftCellKey(string userId, int shiftDayId, ShiftType shiftType)
-        {
-            return $"{userId}_{shiftDayId}_{(int)shiftType}";
-        }
-
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
         {
@@ -106,109 +101,15 @@ namespace sumile.Controllers
         {
             if (!await IsAdminUser()) return Unauthorized();
 
-            var periods = await _context.RecruitmentPeriods
-                .OrderByDescending(p => p.Id)
-                .ToListAsync();
-
-            var users = await _context.Users
-                .OrderBy(u => u.CustomId)
-                .ToListAsync();
-
-            ViewBag.RecruitmentPeriods = periods;
-            ViewBag.SelectedPeriodId = periodId;
-            ViewBag.Users = users;
-            ViewBag.SelectedTargetUserId = targetUserId;
-            ViewBag.SelectedAdminUserId = adminUserId;
-            ViewBag.EditedFrom = editedFrom?.ToString("yyyy-MM-dd");
-            ViewBag.EditedTo = editedTo?.ToString("yyyy-MM-dd");
-            ViewBag.OnlyChanged = onlyChanged;
-            ViewBag.OnlyCurrentDiff = onlyCurrentDiff;
-
-            var logQuery = _context.ShiftEditLogs
-                .Include(l => l.AdminUser)
-                .Include(l => l.TargetUser)
-                .Include(l => l.ShiftDay)
-                .Where(l => !periodId.HasValue || l.ShiftDay.RecruitmentPeriodId == periodId);
-
-            if (!string.IsNullOrWhiteSpace(targetUserId))
-            {
-                logQuery = logQuery.Where(l => l.TargetUserId == targetUserId);
-            }
-
-            if (!string.IsNullOrWhiteSpace(adminUserId))
-            {
-                logQuery = logQuery.Where(l => l.AdminUserId == adminUserId);
-            }
-
-            if (onlyChanged)
-            {
-                logQuery = logQuery.Where(l => l.OldState != l.NewState);
-            }
-
-            var logs = await logQuery
-                .OrderByDescending(l => l.EditDate)
-                .ToListAsync();
-
-            if (editedFrom.HasValue)
-            {
-                logs = logs
-                    .Where(l => l.EditDate.ToLocalTime().Date >= editedFrom.Value.Date)
-                    .ToList();
-            }
-
-            if (editedTo.HasValue)
-            {
-                logs = logs
-                    .Where(l => l.EditDate.ToLocalTime().Date <= editedTo.Value.Date)
-                    .ToList();
-            }
-
-            var logShiftDayIds = logs
-                .Select(l => l.ShiftDayId)
-                .Distinct()
-                .ToList();
-
-            var backups = await _context.SubmitBackups
-                .Where(b => logShiftDayIds.Contains(b.ShiftDayId))
-                .ToListAsync();
-
-            var initialStateByKey = backups
-                .GroupBy(b => GetShiftCellKey(b.UserId, b.ShiftDayId, b.ShiftType))
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.OrderBy(b => b.BackedUpAt).First().ShiftStatus);
-
-            var currentSubmissions = await _context.ShiftSubmissions
-                .Where(s => logShiftDayIds.Contains(s.ShiftDayId))
-                .ToListAsync();
-
-            var currentStateByKey = currentSubmissions
-                .GroupBy(s => GetShiftCellKey(s.UserId, s.ShiftDayId, s.ShiftType))
-                .ToDictionary(
-                    g => g.Key,
-                    g => g
-                        .OrderByDescending(s => s.SubmittedAt ?? DateTime.MinValue)
-                        .ThenByDescending(s => s.Id)
-                        .First()
-                        .ShiftStatus);
-
-            if (onlyCurrentDiff)
-            {
-                logs = logs
-                    .Where(log =>
-                    {
-                        var key = GetShiftCellKey(log.TargetUserId, log.ShiftDayId, log.ShiftType);
-                        var initialState = initialStateByKey.TryGetValue(key, out var initial) ? initial : ShiftState.None;
-                        var currentState = currentStateByKey.TryGetValue(key, out var current) ? current : ShiftState.None;
-                        return currentState != initialState;
-                    })
-                    .ToList();
-            }
-
-            ViewBag.InitialStateByKey = initialStateByKey;
-            ViewBag.CurrentStateByKey = currentStateByKey;
-
-            return View(logs);
+            var model = await _adminShiftEditService.BuildLogsAsync(
+                periodId,
+                targetUserId,
+                adminUserId,
+                editedFrom,
+                editedTo,
+                onlyChanged,
+                onlyCurrentDiff);
+            return View(model);
         }
 
         [HttpGet]///※１
@@ -314,31 +215,14 @@ namespace sumile.Controllers
         {
             if (!await IsAdminUser()) return Unauthorized();
 
-            var allPeriods = await _context.RecruitmentPeriods.OrderByDescending(p => p.Id).ToListAsync();
-            var selectedPeriod = periodId.HasValue
-                ? allPeriods.FirstOrDefault(p => p.Id == periodId)
-                : allPeriods.FirstOrDefault();
-
-            if (selectedPeriod == null)
+            var model = await _adminSubmissionPeriodService.BuildDailyWorkloadAsync(periodId);
+            if (model == null)
             {
                 TempData["Error"] = "募集期間が存在しません。";
                 return RedirectToAction("Index");
             }
 
-            var shiftDays = await _context.ShiftDays
-                .Where(d => d.RecruitmentPeriodId == selectedPeriod.Id)
-                .OrderBy(d => d.Date)
-                .ToListAsync();
-
-            var workloads = await _context.DailyWorkloads
-                .Where(w => shiftDays.Select(d => d.Id).Contains(w.ShiftDayId))
-                .ToDictionaryAsync(w => w.ShiftDayId, w => w);
-
-            ViewBag.ShiftDays = shiftDays;
-            ViewBag.SelectedPeriodId = selectedPeriod.Id;
-            ViewBag.Periods = allPeriods;
-
-            return View("DailyWorkload", workloads);
+            return View("DailyWorkload", model);
         }
 
         [HttpGet]///※１
@@ -346,35 +230,14 @@ namespace sumile.Controllers
         {
             if (!await IsAdminUser()) return Unauthorized();
 
-            var allPeriods = await _context.RecruitmentPeriods
-                .OrderByDescending(r => r.Id)
-                .ToListAsync();
-
-            var selectedPeriod = periodId.HasValue
-                ? allPeriods.FirstOrDefault(p => p.Id == periodId.Value)
-                : allPeriods.FirstOrDefault();
-
-            if (selectedPeriod == null)
+            var model = await _adminSubmissionPeriodService.BuildDailyWorkloadAsync(periodId);
+            if (model == null)
             {
                 TempData["Error"] = "募集期間が見つかりませんでした。";
                 return RedirectToAction("Index");
             }
 
-            var shiftDays = await _context.ShiftDays
-                .Where(d => d.RecruitmentPeriodId == selectedPeriod.Id)
-                .OrderBy(d => d.Date)
-                .ToListAsync();
-
-            var workloads = await _context.DailyWorkloads
-                .Where(w => shiftDays.Select(d => d.Id).Contains(w.ShiftDayId))
-                .ToDictionaryAsync(w => w.ShiftDayId); // ← ★辞書に変更
-
-            ViewBag.RecruitmentPeriods = allPeriods;
-            ViewBag.SelectedPeriodId = selectedPeriod.Id;
-            ViewBag.ShiftDays = shiftDays;
-            ViewBag.WorkloadMap = workloads; // ← ★辞書で渡す
-
-            return View("DailyWorkload");
+            return View("DailyWorkload", model);
         }
 
         [HttpPost]///※１

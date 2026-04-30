@@ -1,11 +1,12 @@
-﻿@model IEnumerable<sumile.Models.ShiftExchange>
+﻿@model sumile.ViewModels.ExchangeIndexPageViewModel
 @using sumile.Models
 
 @{
     ViewData["Title"] = "シフト交換掲示板";
-    var currentUserId = ViewBag.CurrentUserId as string;
-    var isAdmin = ViewBag.IsAdmin as bool? ?? false;
-    var relatedOnly = ViewBag.RelatedOnly as bool? ?? false;
+    var currentUserId = Model.CurrentUserId;
+    var currentUserRole = Model.CurrentUserRole;
+    var isAdmin = Model.IsAdmin;
+    var relatedOnly = Model.RelatedOnly;
 }
 
 <h2 class="mb-4">シフト交換掲示板</h2>
@@ -42,7 +43,7 @@
         </tr>
     </thead>
     <tbody>
-        @foreach (var item in Model)
+        @foreach (var item in Model.Exchanges)
         {
             var offered = item.OfferedShiftSubmission;
             var accepted = item.AcceptedShiftSubmission;
@@ -114,7 +115,7 @@
                         @if (canApply)
                         {
                             <form asp-action="Select" asp-route-id="@item.Id" method="post" class="d-inline"
-                                  onsubmit="return checkExchangeCapacity(this, '@shiftDateStr', '@shiftTypeInt', @periodId, '@ViewBag.CurrentUserRole', '@targetUserRole');">
+                                  onsubmit="return checkExchangeCapacity(this, '@shiftDateStr', '@shiftTypeInt', @periodId, '@currentUserRole', '@targetUserRole');">
                                 <button type="submit" class="btn btn-sm btn-outline-primary">この交換に応募</button>
                             </form>
                         }

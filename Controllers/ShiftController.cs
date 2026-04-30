@@ -94,13 +94,7 @@ namespace sumile.Controllers
             if (currentUser == null) return RedirectToAction("Login", "Account");
 
             var model = await _shiftPageService.BuildSubmittedListAsync(currentUser, periodId, includeUsers: true);
-            ViewBag.RecruitmentPeriods = model.RecruitmentPeriods;
-            ViewBag.SelectedPeriodId = model.SelectedPeriodId;
-            ViewBag.Dates = model.Dates;
-            ViewBag.Users = model.Users;
-            ViewBag.Submissions = model.Submissions;
-
-            return View();
+            return View("SubmittedList", model);
         }
 
         [HttpGet]
@@ -109,12 +103,8 @@ namespace sumile.Controllers
             var currentUser = await _userManager.GetUserAsync(User);
             if (currentUser == null) return RedirectToAction("Login", "Account");
 
-            var model = await _shiftPageService.BuildSubmittedListAsync(currentUser, periodId, includeUsers: false);
-            ViewBag.RecruitmentPeriods = model.RecruitmentPeriods;
-            ViewBag.SelectedPeriodId = model.SelectedPeriodId;
-            ViewBag.Dates = model.Dates;
-
-            return View(model.Submissions);
+            var model = await _shiftPageService.BuildSubmittedListAsync(currentUser, periodId, includeUsers: true);
+            return View(model);
         }
 
         [HttpGet]

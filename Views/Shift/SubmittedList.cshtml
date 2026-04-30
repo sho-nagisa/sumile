@@ -1,13 +1,13 @@
-﻿@{
+﻿@model sumile.ViewModels.SubmittedShiftListPageViewModel
+@using sumile.Models
+@{
     ViewData["Title"] = "シフト一覧（個人用）";
 
-    // コントローラで詰めたものを受け取る
-    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<sumile.Models.RecruitmentPeriod>;
-    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
-    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
-    var dates = ViewBag.Dates as List<DateTime> ?? new List<DateTime>();
-    var submissions = ViewBag.Submissions as IEnumerable<sumile.Models.ShiftSubmission>
-                      ?? new List<sumile.Models.ShiftSubmission>();
+    var recruitmentPeriods = Model.RecruitmentPeriods;
+    var selectedPeriodId = Model.SelectedPeriodId;
+    var users = Model.Users;
+    var dates = Model.Dates;
+    var submissions = Model.Submissions;
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -42,8 +42,8 @@
 <script>
     document.getElementById('periodSelect')?.addEventListener('change', function () {
         var pid = this.value;
-        // SubmissionList アクションに ?periodId=◯◯ を付けて再読み込み
-        window.location.href = '@Url.Action("SubmissionList", "Shift")?periodId=' + pid;
+        // SubmittedList アクションに ?periodId=◯◯ を付けて再読み込み
+        window.location.href = '@Url.Action("SubmittedList", "Shift")?periodId=' + pid;
     });
 </script>
 
@@ -76,22 +76,20 @@
 
                 @foreach (var date in dates)
                 {
-                    // 朝（"Morning"）
                     var morningShift = submissions
-                    .FirstOrDefault(s =>
-                    s.UserId == user.Id
-                    && s.ShiftType == ShiftType.Morning
-                    );
+                        .FirstOrDefault(s =>
+                            s.UserId == user.Id &&
+                            s.ShiftDay?.Date.Date == date.Date &&
+                            s.ShiftType == ShiftType.Morning);
 
-                    // 夜（"Night"）
                     var nightShift = submissions
-                    .FirstOrDefault(s =>
-                    s.UserId == user.Id
-                    && s.ShiftType == ShiftType.Night
-                    );
+                        .FirstOrDefault(s =>
+                            s.UserId == user.Id &&
+                            s.ShiftDay?.Date.Date == date.Date &&
+                            s.ShiftType == ShiftType.Night);
 
-                    <td>@(morningShift != null ? "〇" : "×")</td>
-                    <td>@(nightShift != null ? "〇" : "×")</td>
+                    <td>@ConvertStateToSymbol(morningShift?.ShiftStatus)</td>
+                    <td>@ConvertStateToSymbol(nightShift?.ShiftStatus)</td>
                 }
             </tr>
         }
@@ -100,3 +98,16 @@
 
 <!-- 戻るなど適宜ボタン -->
 <a asp-action="Index" controller="Home" class="btn btn-secondary">戻る</a>
+
+@functions {
+    string ConvertStateToSymbol(ShiftState? state)
+    {
+        return state switch
+        {
+            ShiftState.Accepted => "〇",
+            ShiftState.KeyHolder => "〇",
+            ShiftState.WantToGiveAway => "△",
+            _ => "×"
+        };
+    }
+}

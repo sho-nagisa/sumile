@@ -1,19 +1,19 @@
-@model List<sumile.Models.ShiftEditLog>
+@model sumile.ViewModels.AdminShiftEditLogsPageViewModel
 @using sumile.Models
 
 @{
     ViewData["Title"] = "シフト編集ログ";
-    var periods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new();
-    var users = ViewBag.Users as List<ApplicationUser> ?? new();
-    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
-    var selectedTargetUserId = ViewBag.SelectedTargetUserId as string;
-    var selectedAdminUserId = ViewBag.SelectedAdminUserId as string;
-    var editedFrom = ViewBag.EditedFrom as string;
-    var editedTo = ViewBag.EditedTo as string;
-    var onlyChanged = ViewBag.OnlyChanged as bool? ?? false;
-    var onlyCurrentDiff = ViewBag.OnlyCurrentDiff as bool? ?? false;
-    var initialStateByKey = ViewBag.InitialStateByKey as Dictionary<string, ShiftState> ?? new();
-    var currentStateByKey = ViewBag.CurrentStateByKey as Dictionary<string, ShiftState> ?? new();
+    var periods = Model.RecruitmentPeriods;
+    var users = Model.Users;
+    var selectedPeriodId = Model.SelectedPeriodId;
+    var selectedTargetUserId = Model.SelectedTargetUserId;
+    var selectedAdminUserId = Model.SelectedAdminUserId;
+    var editedFrom = Model.EditedFrom;
+    var editedTo = Model.EditedTo;
+    var onlyChanged = Model.OnlyChanged;
+    var onlyCurrentDiff = Model.OnlyCurrentDiff;
+    var initialStateByKey = Model.InitialStateByKey;
+    var currentStateByKey = Model.CurrentStateByKey;
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -127,7 +127,7 @@
         </tr>
     </thead>
     <tbody>
-        @foreach (var log in Model)
+        @foreach (var log in Model.Logs)
         {
             var key = $"{log.TargetUserId}_{log.ShiftDayId}_{(int)log.ShiftType}";
             var initialState = initialStateByKey.TryGetValue(key, out var initial)

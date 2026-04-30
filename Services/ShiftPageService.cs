@@ -116,7 +116,8 @@ namespace sumile.Services
                 {
                     Id = currentUser.Id,
                     CustomId = currentUser.CustomId,
-                    Name = currentUser.Name
+                    Name = currentUser.Name,
+                    UserShiftRole = currentUser.UserShiftRole
                 });
             }
 

@@ -1,10 +1,11 @@
-﻿@using sumile.Models
+﻿@model sumile.ViewModels.AdminDailyWorkloadPageViewModel
+@using sumile.Models
 @{
     ViewData["Title"] = "枚数編集";
-    var periods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new();
-    var selectedPeriodId = ViewBag.SelectedPeriodId as int? ?? 0;
-    var shiftDays = ViewBag.ShiftDays as List<ShiftDay> ?? new();
-    var workloadMap = ViewBag.WorkloadMap as Dictionary<int, DailyWorkload> ?? new(); // ← ★辞書形式に
+    var periods = Model.RecruitmentPeriods;
+    var selectedPeriodId = Model.SelectedPeriodId;
+    var shiftDays = Model.ShiftDays;
+    var workloadMap = Model.WorkloadMap;
 }
 
 <h2>枚数編集</h2>

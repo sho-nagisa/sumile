@@ -1,8 +1,9 @@
 ﻿@using sumile.Models
+@model sumile.ViewModels.ExchangeCreatePageViewModel
 @{
     ViewData["Title"] = "シフト交換希望を出す";
-    var shiftsByPeriod = ViewBag.ShiftsByPeriod as Dictionary<RecruitmentPeriod, List<ShiftSubmission>> ?? new();
-    var targetUsers = ViewBag.TargetUsers as List<ApplicationUser> ?? new();
+    var shiftsByPeriod = Model.ShiftsByPeriod;
+    var targetUsers = Model.TargetUsers;
 }
 
 <h2>@ViewData["Title"]</h2>

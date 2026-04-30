@@ -60,6 +60,125 @@ namespace sumile.Services
             };
         }
 
+        public async Task<AdminShiftEditLogsPageViewModel> BuildLogsAsync(
+            int? periodId,
+            string? targetUserId,
+            string? adminUserId,
+            DateTime? editedFrom,
+            DateTime? editedTo,
+            bool onlyChanged,
+            bool onlyCurrentDiff)
+        {
+            var periods = await _context.RecruitmentPeriods
+                .OrderByDescending(p => p.Id)
+                .ToListAsync();
+
+            var users = await _context.Users
+                .OrderBy(u => u.CustomId)
+                .ToListAsync();
+
+            var logQuery = _context.ShiftEditLogs
+                .Include(l => l.AdminUser)
+                .Include(l => l.TargetUser)
+                .Include(l => l.ShiftDay)
+                .Where(l => !periodId.HasValue || l.ShiftDay.RecruitmentPeriodId == periodId);
+
+            if (!string.IsNullOrWhiteSpace(targetUserId))
+            {
+                logQuery = logQuery.Where(l => l.TargetUserId == targetUserId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(adminUserId))
+            {
+                logQuery = logQuery.Where(l => l.AdminUserId == adminUserId);
+            }
+
+            if (onlyChanged)
+            {
+                logQuery = logQuery.Where(l => l.OldState != l.NewState);
+            }
+
+            var logs = await logQuery
+                .OrderByDescending(l => l.EditDate)
+                .ToListAsync();
+
+            if (editedFrom.HasValue)
+            {
+                logs = logs
+                    .Where(l => l.EditDate.ToLocalTime().Date >= editedFrom.Value.Date)
+                    .ToList();
+            }
+
+            if (editedTo.HasValue)
+            {
+                logs = logs
+                    .Where(l => l.EditDate.ToLocalTime().Date <= editedTo.Value.Date)
+                    .ToList();
+            }
+
+            var logShiftDayIds = logs
+                .Select(l => l.ShiftDayId)
+                .Distinct()
+                .ToList();
+
+            var backups = await _context.SubmitBackups
+                .Where(b => logShiftDayIds.Contains(b.ShiftDayId))
+                .ToListAsync();
+
+            var initialStateByKey = backups
+                .GroupBy(b => GetShiftCellKey(b.UserId, b.ShiftDayId, b.ShiftType))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(b => b.BackedUpAt).First().ShiftStatus);
+
+            var currentSubmissions = await _context.ShiftSubmissions
+                .Where(s => logShiftDayIds.Contains(s.ShiftDayId))
+                .ToListAsync();
+
+            var currentStateByKey = currentSubmissions
+                .GroupBy(s => GetShiftCellKey(s.UserId, s.ShiftDayId, s.ShiftType))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .OrderByDescending(s => s.SubmittedAt ?? DateTime.MinValue)
+                        .ThenByDescending(s => s.Id)
+                        .First()
+                        .ShiftStatus);
+
+            if (onlyCurrentDiff)
+            {
+                logs = logs
+                    .Where(log =>
+                    {
+                        var key = GetShiftCellKey(log.TargetUserId, log.ShiftDayId, log.ShiftType);
+                        var initialState = initialStateByKey.TryGetValue(key, out var initial)
+                            ? initial
+                            : ShiftState.None;
+                        var currentState = currentStateByKey.TryGetValue(key, out var current)
+                            ? current
+                            : ShiftState.None;
+                        return currentState != initialState;
+                    })
+                    .ToList();
+            }
+
+            return new AdminShiftEditLogsPageViewModel
+            {
+                RecruitmentPeriods = periods,
+                Users = users,
+                Logs = logs,
+                SelectedPeriodId = periodId,
+                SelectedTargetUserId = targetUserId,
+                SelectedAdminUserId = adminUserId,
+                EditedFrom = editedFrom?.ToString("yyyy-MM-dd"),
+                EditedTo = editedTo?.ToString("yyyy-MM-dd"),
+                OnlyChanged = onlyChanged,
+                OnlyCurrentDiff = onlyCurrentDiff,
+                InitialStateByKey = initialStateByKey,
+                CurrentStateByKey = currentStateByKey
+            };
+        }
+
         public async Task<AdminShiftEditResult> UpdateShiftsAsync(
             ShiftUpdateRequest request,
             int periodId,

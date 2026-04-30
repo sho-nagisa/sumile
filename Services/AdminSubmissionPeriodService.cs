@@ -119,6 +119,40 @@ namespace sumile.Services
             };
         }
 
+        public async Task<AdminDailyWorkloadPageViewModel?> BuildDailyWorkloadAsync(int? periodId)
+        {
+            var allPeriods = await _context.RecruitmentPeriods
+                .OrderByDescending(p => p.Id)
+                .ToListAsync();
+
+            var selectedPeriod = periodId.HasValue
+                ? allPeriods.FirstOrDefault(p => p.Id == periodId.Value)
+                : allPeriods.FirstOrDefault();
+
+            if (selectedPeriod == null)
+            {
+                return null;
+            }
+
+            var shiftDays = await _context.ShiftDays
+                .Where(d => d.RecruitmentPeriodId == selectedPeriod.Id)
+                .OrderBy(d => d.Date)
+                .ToListAsync();
+
+            var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
+            var workloads = await _context.DailyWorkloads
+                .Where(w => shiftDayIds.Contains(w.ShiftDayId))
+                .ToDictionaryAsync(w => w.ShiftDayId);
+
+            return new AdminDailyWorkloadPageViewModel
+            {
+                RecruitmentPeriods = allPeriods,
+                SelectedPeriodId = selectedPeriod.Id,
+                ShiftDays = shiftDays,
+                WorkloadMap = workloads
+            };
+        }
+
         private async Task BackupSubmissionsAsync(int periodId, DateTime backedUpAt)
         {
             var shiftDayIds = await _context.ShiftDays
