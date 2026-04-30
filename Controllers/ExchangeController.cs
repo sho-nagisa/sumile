@@ -1,27 +1,44 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using sumile.Models;
 using sumile.Services;
 
+[Authorize]
 public class ExchangeController : Controller
 {
+    private readonly UserManager<ApplicationUser> _userManager;
     private readonly ShiftPdfService _pdfService;
     private readonly ShiftExchangeWorkflowService _exchangeWorkflowService;
     private readonly ExchangePageService _exchangePageService;
 
     public ExchangeController(
+        UserManager<ApplicationUser> userManager,
         ShiftPdfService pdfService,
         ShiftExchangeWorkflowService exchangeWorkflowService,
         ExchangePageService exchangePageService)
     {
+        _userManager = userManager;
         _pdfService = pdfService;
         _exchangeWorkflowService = exchangeWorkflowService;
         _exchangePageService = exchangePageService;
     }
 
+    private string? GetCurrentUserId()
+    {
+        return _userManager.GetUserId(User);
+    }
+
+    private async Task<bool> IsCurrentUserAdminAsync()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        return user?.IsAdmin == true;
+    }
+
     public async Task<IActionResult> Create()
     {
-        var userId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId)) return Challenge();
 
         var model = await _exchangePageService.BuildCreateAsync(userId);
         return View(model);
@@ -31,8 +48,8 @@ public class ExchangeController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(int offeredShiftSubmissionId, int shiftDayId, ShiftType shiftType, string? targetUserId)
     {
-        var userId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId)) return Challenge();
 
         var result = await _exchangeWorkflowService.CreateRequestAsync(
             offeredShiftSubmissionId,
@@ -50,8 +67,8 @@ public class ExchangeController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Select(int id)
     {
-        var userId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId)) return Challenge();
 
         var result = await _exchangeWorkflowService.ApplyAsync(id, userId, DateTime.UtcNow);
         if (result.NotFound) return NotFound(result.Message);
@@ -65,8 +82,8 @@ public class ExchangeController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CancelRequest(int id)
     {
-        var userId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId)) return Challenge();
 
         var result = await _exchangeWorkflowService.CancelRequestAsync(id, userId, DateTime.UtcNow);
         if (result.NotFound) return NotFound(result.Message);
@@ -81,8 +98,8 @@ public class ExchangeController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CancelApplication(int id)
     {
-        var userId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId)) return Challenge();
 
         var result = await _exchangeWorkflowService.CancelApplicationAsync(id, userId, DateTime.UtcNow);
         if (result.NotFound) return NotFound(result.Message);
@@ -96,9 +113,7 @@ public class ExchangeController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RejectExchange(int exchangeId)
     {
-        var userId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
-        if (!await _exchangePageService.IsAdminUserAsync(userId)) return Unauthorized();
+        if (!await IsCurrentUserAdminAsync()) return Forbid();
 
         var result = await _exchangeWorkflowService.RejectExchangeAsync(exchangeId, DateTime.UtcNow);
         if (result.NotFound) return NotFound(result.Message);
@@ -112,9 +127,9 @@ public class ExchangeController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> FinalizeExchange(int exchangeId)
     {
-        var userId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Account");
-        if (!await _exchangePageService.IsAdminUserAsync(userId)) return Unauthorized();
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId)) return Challenge();
+        if (!await IsCurrentUserAdminAsync()) return Forbid();
 
         var result = await _exchangeWorkflowService.FinalizeAsync(exchangeId, userId, DateTime.UtcNow);
         if (result.NotFound) return NotFound(result.Message);
@@ -134,11 +149,11 @@ public class ExchangeController : Controller
 
     public async Task<IActionResult> Index(bool relatedOnly = false)
     {
-        var currentUserId = HttpContext.Session.GetString("UserId");
-        if (string.IsNullOrEmpty(currentUserId)) return RedirectToAction("Login", "Account");
+        var currentUserId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(currentUserId)) return Challenge();
 
         var model = await _exchangePageService.BuildIndexAsync(currentUserId, relatedOnly);
-        if (model == null) return RedirectToAction("Login", "Account");
+        if (model == null) return Challenge();
 
         return View(model);
     }

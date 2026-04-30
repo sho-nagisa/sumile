@@ -81,12 +81,6 @@ namespace sumile.Services
             };
         }
 
-        public async Task<bool> IsAdminUserAsync(string? userId)
-        {
-            if (string.IsNullOrEmpty(userId)) return false;
-            return await _context.Users.AnyAsync(u => u.Id == userId && u.IsAdmin);
-        }
-
         public async Task<object> GetShiftStatusInfoAsync(DateTime date, ShiftType shiftType, int periodId)
         {
             var shiftDay = await _context.ShiftDays
