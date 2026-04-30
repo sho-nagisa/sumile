@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using sumile.Authorization;
 using sumile.Models;
 using sumile.Services;
 
@@ -27,12 +28,6 @@ public class ExchangeController : Controller
     private string? GetCurrentUserId()
     {
         return _userManager.GetUserId(User);
-    }
-
-    private async Task<bool> IsCurrentUserAdminAsync()
-    {
-        var user = await _userManager.GetUserAsync(User);
-        return user?.IsAdmin == true;
     }
 
     public async Task<IActionResult> Create()
@@ -111,10 +106,9 @@ public class ExchangeController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = AdminPolicy.Name)]
     public async Task<IActionResult> RejectExchange(int exchangeId)
     {
-        if (!await IsCurrentUserAdminAsync()) return Forbid();
-
         var result = await _exchangeWorkflowService.RejectExchangeAsync(exchangeId, DateTime.UtcNow);
         if (result.NotFound) return NotFound(result.Message);
         if (!result.Success) return BadRequest(result.Message);
@@ -125,11 +119,11 @@ public class ExchangeController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = AdminPolicy.Name)]
     public async Task<IActionResult> FinalizeExchange(int exchangeId)
     {
         var userId = GetCurrentUserId();
         if (string.IsNullOrEmpty(userId)) return Challenge();
-        if (!await IsCurrentUserAdminAsync()) return Forbid();
 
         var result = await _exchangeWorkflowService.FinalizeAsync(exchangeId, userId, DateTime.UtcNow);
         if (result.NotFound) return NotFound(result.Message);

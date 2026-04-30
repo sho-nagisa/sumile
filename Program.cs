@@ -2,11 +2,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using PdfSharpCore.Fonts;
 using DotNetEnv;
+using sumile.Authorization;
 using sumile.Data;
 using sumile.Models;
 using sumile.Services;
@@ -42,6 +44,16 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AdminPolicy.Name, policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.Requirements.Add(new AdminRequirement());
+    });
+});
+builder.Services.AddScoped<IAuthorizationHandler, AdminAuthorizationHandler>();
 
 // セッション設定
 builder.Services.AddSession(options =>

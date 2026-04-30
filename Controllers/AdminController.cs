@@ -7,6 +7,7 @@ using sumile.Data;
 using sumile.Models;
 using sumile.ViewModels;
 using sumile.Services;
+using sumile.Authorization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,7 +15,7 @@ using System.Threading.Tasks;
 ///※１：確定版
 namespace sumile.Controllers
 {
-    [Authorize]
+    [Authorize(Policy = AdminPolicy.Name)]
     public class AdminController : Controller
     {
         private readonly UserManager<ApplicationUser> _userManager;
@@ -43,25 +44,9 @@ namespace sumile.Controllers
             _adminShiftEditService = adminShiftEditService;
         }
 
-        private async Task<bool> IsAdminUser()
-        {
-            var isAdminStr = HttpContext.Session.GetString("IsAdmin");
-            if (!string.IsNullOrEmpty(isAdminStr))
-            {
-                return isAdminStr == "True";
-            }
-
-            var user = await _userManager.GetUserAsync(User);
-            var isAdmin = user?.IsAdmin ?? false;
-            HttpContext.Session.SetString("IsAdmin", isAdmin.ToString());
-            return isAdmin;
-        }
-
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             var dashboard = await _adminDashboardService.BuildAsync(periodId);
             if (dashboard == null)
             {
@@ -81,8 +66,6 @@ namespace sumile.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RegeneratePdf(int periodId)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             await _pdfService.GenerateShiftPdfAsync(periodId);
             TempData["SuccessMessage"] = "PDFを再生成しました。";
 
@@ -99,8 +82,6 @@ namespace sumile.Controllers
             bool onlyChanged = false,
             bool onlyCurrentDiff = false)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             var model = await _adminShiftEditService.BuildLogsAsync(
                 periodId,
                 targetUserId,
@@ -115,7 +96,6 @@ namespace sumile.Controllers
         [HttpGet]///※１
         public async Task<IActionResult> SetRecruitmentPeriod()
         {
-            if (!await IsAdminUser()) return Unauthorized();
             var model = await _adminSubmissionPeriodService.BuildDefaultPeriodModelAsync();
             return View(model);
         }
@@ -124,7 +104,6 @@ namespace sumile.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SetRecruitmentPeriod(RecruitmentPeriodViewModel model)
         {
-            if (!await IsAdminUser()) return Unauthorized();
             if (!ModelState.IsValid)
             {
                 return View(model);
@@ -137,9 +116,6 @@ namespace sumile.Controllers
         [HttpGet]
         public async Task<IActionResult> EditShifts(int? periodId)
         {
-            if (!await IsAdminUser())
-                return Unauthorized();
-
             var model = await _adminShiftEditService.BuildPageAsync(periodId);
             if (model == null)
             {
@@ -158,15 +134,6 @@ namespace sumile.Controllers
         {
             try
             {
-                if (!await IsAdminUser())
-                {
-                    return StatusCode(StatusCodes.Status403Forbidden, new
-                    {
-                        success = false,
-                        error = "管理者のみこの操作を実行できます。"
-                    });
-                }
-
                 var adminUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(adminUserId))
                     return Json(new { success = false, error = "管理者のユーザーIDが取得できませんでした。" });
@@ -191,8 +158,6 @@ namespace sumile.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ToggleSubmissionStatus(int id)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             var toggled = await _adminSubmissionPeriodService.ToggleSubmissionStatusAsync(id, DateTime.UtcNow);
             if (!toggled)
             {
@@ -205,7 +170,6 @@ namespace sumile.Controllers
         [HttpGet]
         public async Task<IActionResult> ManageSubmissionPeriods()
         {
-            if (!await IsAdminUser()) return Unauthorized();
             var model = await _adminSubmissionPeriodService.BuildPeriodListAsync();
             return View(model);
         }
@@ -213,8 +177,6 @@ namespace sumile.Controllers
         [HttpGet]///※１
         public async Task<IActionResult> ViewDailyWorkload(int? periodId)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             var model = await _adminSubmissionPeriodService.BuildDailyWorkloadAsync(periodId);
             if (model == null)
             {
@@ -228,8 +190,6 @@ namespace sumile.Controllers
         [HttpGet]///※１
         public async Task<IActionResult> EditDailyWorkload(int? periodId)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             var model = await _adminSubmissionPeriodService.BuildDailyWorkloadAsync(periodId);
             if (model == null)
             {
@@ -244,8 +204,6 @@ namespace sumile.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SaveDailyWorkload(int periodId, Dictionary<string, int> inputCounts, string redirectTo)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             var shiftDays = await _context.ShiftDays
                 .Where(d => d.RecruitmentPeriodId == periodId)
                 .ToListAsync();
@@ -290,8 +248,6 @@ namespace sumile.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> AutoAssignShifts(int periodId)
         {
-            if (!await IsAdminUser()) return Unauthorized();
-
             var result = await _autoShiftAssignmentService.AssignAsync(periodId, DateTime.UtcNow);
             TempData["SuccessMessage"] = "シフトの自動割り当てが完了しました。";
             TempData["AutoAssignSummary"] =

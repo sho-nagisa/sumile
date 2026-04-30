@@ -117,7 +117,6 @@ namespace sumile.Controllers
             {
                 HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
                 HttpContext.Session.SetString("UserId", user.Id);
-                HttpContext.Session.SetString("IsAdmin", user.IsAdmin.ToString());
 
                 return RedirectToAction("Index", "Shift");
             }
