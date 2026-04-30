@@ -1,7 +1,16 @@
+# Visual Studio / user-local files
 .vs/
-obj/
+*.user
+*.lnk
+
+# Build artifacts
 bin/
+obj/
+
+# Local environment and local package caches
 .env
 .dotnet/
 .nuget/
+
+# Generated shift PDFs
 wwwroot/shift_pdfs/*.pdf
