@@ -32,23 +32,7 @@ namespace sumile.Controllers
                 return RedirectToAction("Login", "Account");
 
             var model = await _shiftPageService.BuildIndexAsync(currentUser, periodId);
-            var table = model.Table;
-
-            ViewBag.CurrentUserCustomId = model.CurrentUserCustomId;
-            ViewBag.Users = model.Users;
-            ViewBag.Dates = table.ShiftDays;
-            ViewBag.Submissions = table.Submissions;
-            ViewBag.Workloads = table.Workloads;
-            ViewBag.WorkloadCells = table.WorkloadCells;
-            ViewBag.ShiftColumns = table.ShiftColumns;
-            ViewBag.TotalAcceptedList = table.TotalAcceptedList;
-            ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
-            ViewBag.RequiredWorkersList = table.RequiredWorkersList;
-            ViewBag.RemainingWorkersList = table.RemainingWorkersList;
-            ViewBag.RecruitmentPeriods = model.RecruitmentPeriods;
-            ViewBag.SelectedPeriodId = model.SelectedPeriodId;
-
-            return View();
+            return View(model);
         }
 
         [HttpGet]

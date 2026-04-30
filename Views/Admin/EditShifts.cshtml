@@ -1,26 +1,26 @@
 ﻿@using sumile.Models
 @using sumile.Services
+@using sumile.ViewModels
 @using System.Globalization
+@model AdminEditShiftsPageViewModel
 
 @{
     ViewData["Title"] = "シフト編集";
 
-    var users = ViewBag.Users as IEnumerable<dynamic> ?? new List<dynamic>();
-    var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
-    var submissions = ViewBag.Submissions as List<ShiftSubmission> ?? new List<ShiftSubmission>();
-    var backups = ViewBag.Backups as List<SubmitBackup> ?? new List<SubmitBackup>();
-
-    var workloads = ViewBag.Workloads as List<DailyWorkload> ?? new List<DailyWorkload>();
-    var workloadCells = ViewBag.WorkloadCells as List<ShiftTableWorkloadCell> ?? new List<ShiftTableWorkloadCell>();
-    var shiftColumns = ViewBag.ShiftColumns as List<ShiftTableColumn> ?? new List<ShiftTableColumn>();
-    var totalAccepted = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
-    var keyAccepted = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
-    var requiredWorkers = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
-    var remaining = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
-    var hasInitialConfirmation = ViewBag.HasInitialConfirmation as bool? ?? false;
-
-    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
-    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
+    var table = Model.Table;
+    var users = Model.Users;
+    var shiftDays = table.ShiftDays;
+    var submissions = table.Submissions;
+    var backups = Model.Backups;
+    var workloadCells = table.WorkloadCells;
+    var shiftColumns = table.ShiftColumns;
+    var totalAccepted = table.TotalAcceptedList;
+    var keyAccepted = table.KeyHolderAcceptedList;
+    var requiredWorkers = table.RequiredWorkersList;
+    var remaining = table.RemainingWorkersList;
+    var hasInitialConfirmation = Model.HasInitialConfirmation;
+    var recruitmentPeriods = Model.RecruitmentPeriods;
+    var selectedPeriodId = Model.SelectedPeriodId;
 }
 
 <h2>@ViewData["Title"]</h2>

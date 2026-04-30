@@ -8,10 +8,56 @@ namespace sumile.Services
     public class AdminShiftEditService
     {
         private readonly ApplicationDbContext _context;
+        private readonly ShiftTableService _shiftTableService;
 
-        public AdminShiftEditService(ApplicationDbContext context)
+        public AdminShiftEditService(ApplicationDbContext context, ShiftTableService shiftTableService)
         {
             _context = context;
+            _shiftTableService = shiftTableService;
+        }
+
+        public async Task<AdminEditShiftsPageViewModel?> BuildPageAsync(int? periodId)
+        {
+            var allPeriods = await _context.RecruitmentPeriods
+                .OrderByDescending(r => r.Id)
+                .ToListAsync();
+
+            var selectedPeriod = periodId.HasValue
+                ? allPeriods.FirstOrDefault(p => p.Id == periodId.Value)
+                : allPeriods.FirstOrDefault();
+
+            if (selectedPeriod == null)
+            {
+                return null;
+            }
+
+            var table = await _shiftTableService.BuildAsync(selectedPeriod.Id);
+            var shiftDayIds = table.ShiftDays
+                .Select(d => d.Id)
+                .ToList();
+
+            return new AdminEditShiftsPageViewModel
+            {
+                RecruitmentPeriods = allPeriods,
+                SelectedPeriodId = selectedPeriod.Id,
+                Users = await _context.Users
+                    .OrderBy(u => u.CustomId)
+                    .Select(u => new AdminDashboardUserViewModel
+                    {
+                        Id = u.Id,
+                        CustomId = u.CustomId,
+                        Name = u.Name,
+                        UserShiftRole = u.UserShiftRole,
+                        IsAdmin = u.IsAdmin
+                    })
+                    .ToListAsync(),
+                Table = table,
+                Backups = await _context.SubmitBackups
+                    .Where(b => b.RecruitmentPeriodId == selectedPeriod.Id)
+                    .ToListAsync(),
+                HasInitialConfirmation = await _context.ShiftEditLogs
+                    .AnyAsync(l => shiftDayIds.Contains(l.ShiftDayId))
+            };
         }
 
         public async Task<AdminShiftEditResult> UpdateShiftsAsync(

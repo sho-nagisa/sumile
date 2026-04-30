@@ -20,7 +20,6 @@ namespace sumile.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ApplicationDbContext _context;
         private readonly ShiftPdfService _pdfService;
-        private readonly ShiftTableService _shiftTableService;
         private readonly AutoShiftAssignmentService _autoShiftAssignmentService;
         private readonly AdminDashboardService _adminDashboardService;
         private readonly AdminSubmissionPeriodService _adminSubmissionPeriodService;
@@ -30,7 +29,6 @@ namespace sumile.Controllers
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         ShiftPdfService pdfService,
-        ShiftTableService shiftTableService,
         AutoShiftAssignmentService autoShiftAssignmentService,
         AdminDashboardService adminDashboardService,
         AdminSubmissionPeriodService adminSubmissionPeriodService,
@@ -39,7 +37,6 @@ namespace sumile.Controllers
             _context = context;
             _userManager = userManager;
             _pdfService = pdfService;
-            _shiftTableService = shiftTableService;
             _autoShiftAssignmentService = autoShiftAssignmentService;
             _adminDashboardService = adminDashboardService;
             _adminSubmissionPeriodService = adminSubmissionPeriodService;
@@ -65,30 +62,6 @@ namespace sumile.Controllers
             return $"{userId}_{shiftDayId}_{(int)shiftType}";
         }
 
-        private void SetDashboardViewBag(AdminDashboardViewModel dashboard)
-        {
-            ViewBag.Users = dashboard.Users;
-            ViewBag.Dates = dashboard.Table.ShiftDays;
-            ViewBag.Submissions = dashboard.Table.Submissions;
-            ViewBag.Workloads = dashboard.Table.Workloads;
-            ViewBag.WorkloadCells = dashboard.Table.WorkloadCells;
-            ViewBag.ShiftColumns = dashboard.Table.ShiftColumns;
-            ViewBag.TotalAcceptedList = dashboard.Table.TotalAcceptedList;
-            ViewBag.KeyHolderAcceptedList = dashboard.Table.KeyHolderAcceptedList;
-            ViewBag.RequiredWorkersList = dashboard.Table.RequiredWorkersList;
-            ViewBag.RemainingWorkersList = dashboard.Table.RemainingWorkersList;
-            ViewBag.SubmittedUserCount = dashboard.SubmittedUserCount;
-            ViewBag.TargetUserCount = dashboard.TargetUserCount;
-            ViewBag.UnsubmittedUsers = dashboard.UnsubmittedUsers;
-            ViewBag.AssignmentSummary = dashboard.AssignmentSummary;
-            ViewBag.UserShiftStats = dashboard.UserShiftStats;
-            ViewBag.DiffKeys = dashboard.DiffKeys;
-            ViewBag.RecruitmentPeriods = dashboard.RecruitmentPeriods;
-            ViewBag.SelectedPeriodId = dashboard.SelectedPeriodId;
-            ViewBag.ShiftPdfUrl = dashboard.ShiftPdfUrl;
-            ViewBag.ShiftPdfUpdatedAt = dashboard.ShiftPdfUpdatedAt;
-        }
-
         [HttpGet]
         public async Task<IActionResult> Index(int? periodId)
         {
@@ -101,8 +74,12 @@ namespace sumile.Controllers
                 return RedirectToAction("SetRecruitmentPeriod");
             }
 
-            SetDashboardViewBag(dashboard);
-            return View();
+            var currentUser = await _userManager.GetUserAsync(User);
+            dashboard.CurrentUserCustomId = currentUser?.CustomId > 0
+                ? currentUser.CustomId.ToString()
+                : null;
+
+            return View(dashboard);
         }
 
         [HttpPost]
@@ -262,71 +239,14 @@ namespace sumile.Controllers
             if (!await IsAdminUser())
                 return Unauthorized();
 
-            // ===== 募集期間一覧 =====
-            var allPeriods = await _context.RecruitmentPeriods
-                .OrderByDescending(r => r.Id)
-                .ToListAsync();
-
-            // ===== 選択中の期間 =====
-            var selectedPeriod = periodId.HasValue
-                ? allPeriods.FirstOrDefault(p => p.Id == periodId.Value)
-                : allPeriods.FirstOrDefault();
-
-            if (selectedPeriod == null)
+            var model = await _adminShiftEditService.BuildPageAsync(periodId);
+            if (model == null)
             {
                 TempData["Error"] = "募集期間が見つかりませんでした。";
                 return RedirectToAction(nameof(Index));
             }
 
-            // ===== ★ ShiftTableService 利用（表示ロジック集約） =====
-            var table = await _shiftTableService.BuildAsync(selectedPeriod.Id);
-
-            // ===== 初回状態（SubmitBackup） =====
-            var backups = await _context.SubmitBackups
-                .Where(b => b.RecruitmentPeriodId == selectedPeriod.Id)
-                .ToListAsync();
-
-            var shiftDayIds = table.ShiftDays
-                .Select(d => d.Id)
-                .ToList();
-
-            var hasInitialConfirmation = await _context.ShiftEditLogs
-                .AnyAsync(l => shiftDayIds.Contains(l.ShiftDayId));
-
-            // ===== ユーザー一覧（星表示用に UserShiftRole を含める） =====
-            ViewBag.Users = await _context.Users
-                .OrderBy(u => u.CustomId)
-                .Select(u => new
-                {
-                    u.Id,
-                    u.CustomId,
-                    u.Name,
-                    u.UserShiftRole
-                })
-                .ToListAsync();
-
-            // ===== View に渡す（表描画用） =====
-            ViewBag.Dates                = table.ShiftDays;
-            ViewBag.Submissions           = table.Submissions;
-            ViewBag.Workloads             = table.Workloads;
-            ViewBag.WorkloadCells         = table.WorkloadCells;
-            ViewBag.ShiftColumns          = table.ShiftColumns;
-
-            // 集計（Index と同一ロジック）
-            ViewBag.TotalAcceptedList     = table.TotalAcceptedList;
-            ViewBag.KeyHolderAcceptedList = table.KeyHolderAcceptedList;
-            ViewBag.RequiredWorkersList   = table.RequiredWorkersList;
-            ViewBag.RemainingWorkersList  = table.RemainingWorkersList;
-
-            // 初回状態（差分比較用・将来拡張）
-            ViewBag.Backups               = backups;
-            ViewBag.HasInitialConfirmation = hasInitialConfirmation;
-
-            // 募集期間情報
-            ViewBag.RecruitmentPeriods    = allPeriods;
-            ViewBag.SelectedPeriodId      = selectedPeriod.Id;
-
-            return View();
+            return View(model);
         }
 
 

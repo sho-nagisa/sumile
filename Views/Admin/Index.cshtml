@@ -2,36 +2,32 @@
 @using sumile.Models
 @using sumile.Services
 @using sumile.ViewModels
+@model AdminDashboardViewModel
 @inject ShiftStatusDisplayService ShiftDisplay
 
 @{
     ViewData["Title"] = "シフト一覧(管理者用)";
 
-    var workloads = (ViewBag.Workloads as IEnumerable<DailyWorkload>)?.ToList()
-                    ?? new List<DailyWorkload>();
-    var recruitmentPeriods = ViewBag.RecruitmentPeriods as List<RecruitmentPeriod> ?? new List<RecruitmentPeriod>();
-    int? selectedPeriodId = ViewBag.SelectedPeriodId as int?;
-    var users = (ViewBag.Users as IEnumerable<AdminDashboardUserViewModel> ?? new List<AdminDashboardUserViewModel>()).OrderBy(u => u.CustomId);
-    var shiftDays = ViewBag.Dates as List<ShiftDay> ?? new List<ShiftDay>();
-    var submissions = ViewBag.Submissions as IEnumerable<ShiftSubmission> ?? new List<ShiftSubmission>();
-    var workloadCells = ViewBag.WorkloadCells as List<ShiftTableWorkloadCell> ?? new List<ShiftTableWorkloadCell>();
-    var shiftColumns = ViewBag.ShiftColumns as List<ShiftTableColumn> ?? new List<ShiftTableColumn>();
-    var diffKeys = ViewBag.DiffKeys as HashSet<string> ?? new HashSet<string>();
-    var totalAcceptedList = ViewBag.TotalAcceptedList as List<int> ?? new List<int>();
-    var keyHolderAcceptedList = ViewBag.KeyHolderAcceptedList as List<int> ?? new List<int>();
-    var requiredWorkersList = ViewBag.RequiredWorkersList as List<int> ?? new List<int>();
-    var remainingWorkersList = ViewBag.RemainingWorkersList as List<int> ?? new List<int>();
-    var submittedUserCount = ViewBag.SubmittedUserCount as int? ?? 0;
-    var targetUserCount = ViewBag.TargetUserCount as int? ?? 0;
-    var unsubmittedUsers = ViewBag.UnsubmittedUsers as List<string> ?? new List<string>();
-    var assignmentSummary = ViewBag.AssignmentSummary as AdminShiftAssignmentSummaryViewModel
-        ?? new AdminShiftAssignmentSummaryViewModel();
-    var userShiftStats = ViewBag.UserShiftStats as List<AdminShiftUserStatViewModel>
-        ?? new List<AdminShiftUserStatViewModel>();
-    var shiftPdfUrl = ViewBag.ShiftPdfUrl as string;
-    DateTime? shiftPdfUpdatedAt = ViewBag.ShiftPdfUpdatedAt is DateTime pdfUpdatedAt
-        ? pdfUpdatedAt
-        : null;
+    var table = Model.Table;
+    var recruitmentPeriods = Model.RecruitmentPeriods;
+    int? selectedPeriodId = Model.SelectedPeriodId;
+    var users = Model.Users.OrderBy(u => u.CustomId);
+    var shiftDays = table.ShiftDays;
+    var submissions = table.Submissions;
+    var workloadCells = table.WorkloadCells;
+    var shiftColumns = table.ShiftColumns;
+    var diffKeys = Model.DiffKeys;
+    var totalAcceptedList = table.TotalAcceptedList;
+    var keyHolderAcceptedList = table.KeyHolderAcceptedList;
+    var requiredWorkersList = table.RequiredWorkersList;
+    var remainingWorkersList = table.RemainingWorkersList;
+    var submittedUserCount = Model.SubmittedUserCount;
+    var targetUserCount = Model.TargetUserCount;
+    var unsubmittedUsers = Model.UnsubmittedUsers;
+    var assignmentSummary = Model.AssignmentSummary;
+    var userShiftStats = Model.UserShiftStats;
+    var shiftPdfUrl = Model.ShiftPdfUrl;
+    var shiftPdfUpdatedAt = Model.ShiftPdfUpdatedAt;
 }
 
 <h2>@ViewData["Title"]</h2>
@@ -300,8 +296,8 @@
         @foreach (var user in users)
         {
             bool isCurrentUser =
-                ViewBag.CurrentUserCustomId != null &&
-                user.CustomId.ToString() == ViewBag.CurrentUserCustomId;
+                Model.CurrentUserCustomId != null &&
+                user.CustomId.ToString() == Model.CurrentUserCustomId;
 
             <tr class="@(isCurrentUser ? "current-user-row" : "")">
                 <td>@user.Name</td>
