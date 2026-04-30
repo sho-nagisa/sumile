@@ -115,6 +115,92 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    public async Task FinalizeAsync_TransfersShiftToApplicantAndWritesEditLogs()
+    {
+        await using var context = TestDb.CreateContext();
+        var service = new ShiftExchangeWorkflowService(context);
+        var updatedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
+        context.RecruitmentPeriods.Add(new RecruitmentPeriod
+        {
+            Id = 1,
+            StartDate = updatedAt.Date,
+            EndDate = updatedAt.Date
+        });
+        context.ShiftDays.Add(new ShiftDay
+        {
+            Id = 100,
+            Date = updatedAt.Date,
+            RecruitmentPeriodId = 1
+        });
+        context.ShiftSubmissions.Add(new ShiftSubmission
+        {
+            Id = 10,
+            UserId = "owner",
+            ShiftDayId = 100,
+            ShiftType = ShiftType.Morning,
+            ShiftStatus = ShiftState.Accepted,
+            IsSelected = true,
+            SubmittedAt = updatedAt.AddDays(-1),
+            UserType = UserType.Normal,
+            UserShiftRole = UserShiftRole.Normal
+        });
+        context.Users.Add(new ApplicationUser
+        {
+            Id = "applicant",
+            Name = "Applicant",
+            UserShiftRole = UserShiftRole.KeyHolder
+        });
+        context.ShiftExchanges.Add(new ShiftExchange
+        {
+            Id = 1,
+            RequestedByUserId = "owner",
+            AcceptedByUserId = "applicant",
+            OfferedShiftSubmissionId = 10,
+            Status = ShiftExchange.StatusPendingApproval,
+            CreatedAt = updatedAt.AddDays(-1),
+            UpdatedAt = updatedAt.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var result = await service.FinalizeAsync(1, "admin", updatedAt);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.RecruitmentPeriodId);
+
+        var exchange = await context.ShiftExchanges.SingleAsync(e => e.Id == 1);
+        Assert.Equal(ShiftExchange.StatusFinalized, exchange.Status);
+        Assert.Equal(updatedAt, exchange.UpdatedAt);
+        Assert.NotNull(exchange.AcceptedShiftSubmissionId);
+
+        var offered = await context.ShiftSubmissions.SingleAsync(s => s.Id == 10);
+        Assert.Equal(ShiftState.NotAccepted, offered.ShiftStatus);
+        Assert.False(offered.IsSelected);
+        Assert.Equal(UserType.AdminUpdated, offered.UserType);
+
+        var accepted = await context.ShiftSubmissions.SingleAsync(s =>
+            s.UserId == "applicant" &&
+            s.ShiftDayId == 100 &&
+            s.ShiftType == ShiftType.Morning);
+        Assert.Equal(ShiftState.Accepted, accepted.ShiftStatus);
+        Assert.True(accepted.IsSelected);
+        Assert.Equal(UserType.AdminUpdated, accepted.UserType);
+        Assert.Equal(UserShiftRole.KeyHolder, accepted.UserShiftRole);
+
+        var logs = await context.ShiftEditLogs
+            .OrderBy(l => l.TargetUserId)
+            .ToListAsync();
+        Assert.Equal(2, logs.Count);
+        Assert.Contains(logs, log =>
+            log.TargetUserId == "owner" &&
+            log.OldState == ShiftState.Accepted &&
+            log.NewState == ShiftState.NotAccepted);
+        Assert.Contains(logs, log =>
+            log.TargetUserId == "applicant" &&
+            log.OldState == ShiftState.None &&
+            log.NewState == ShiftState.Accepted);
+    }
+
+    [Fact]
     public async Task CreateRequestAsync_RejectsNonExchangeableSubmission()
     {
         await using var context = TestDb.CreateContext();

@@ -92,4 +92,69 @@ public class AutoShiftAssignmentServiceTests
         Assert.Equal(1, assignedCounts.Values.Min());
         Assert.Equal(1, assignedCounts.Values.Max());
     }
+
+    [Fact]
+    public async Task AssignAsync_ReportsWorkerAndKeyHolderShortagesWhenCandidatesAreInsufficient()
+    {
+        await using var context = TestDb.CreateContext();
+        var service = new AutoShiftAssignmentService(context);
+        var assignedAt = new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        context.RecruitmentPeriods.Add(new RecruitmentPeriod
+        {
+            Id = 1,
+            StartDate = new DateTime(2026, 5, 1),
+            EndDate = new DateTime(2026, 5, 1)
+        });
+        context.ShiftDays.Add(new ShiftDay
+        {
+            Id = 101,
+            Date = new DateTime(2026, 5, 1),
+            RecruitmentPeriodId = 1
+        });
+        context.DailyWorkloads.Add(new global::DailyWorkload
+        {
+            ShiftDayId = 101,
+            RequiredCount = 40,
+            RequiredWorkers = 2
+        });
+
+        foreach (ShiftType shiftType in Enum.GetValues(typeof(ShiftType)))
+        {
+            context.ShiftSubmissions.Add(new ShiftSubmission
+            {
+                UserId = "normal-1",
+                ShiftDayId = 101,
+                ShiftType = shiftType,
+                ShiftStatus = ShiftState.Accepted,
+                IsSelected = true,
+                SubmittedAt = assignedAt.AddDays(-1),
+                UserType = UserType.Normal,
+                UserShiftRole = UserShiftRole.Normal
+            });
+        }
+
+        await context.SaveChangesAsync();
+
+        var result = await service.AssignAsync(1, assignedAt);
+
+        Assert.Equal(2, result.ShiftCellCount);
+        Assert.Equal(4, result.RequiredWorkerTotal);
+        Assert.Equal(2, result.AssignedCount);
+        Assert.Equal(0, result.KeyHolderAssignedCount);
+        Assert.Equal(2, result.WorkerShortages.Count);
+        Assert.Equal(2, result.KeyHolderShortages.Count);
+        Assert.Equal(2, result.WorkerShortageSlots);
+        Assert.Equal(2, result.KeyHolderShortageSlots);
+        Assert.All(result.WorkerShortages, shortage =>
+        {
+            Assert.Equal(1, shortage.Actual);
+            Assert.Equal(2, shortage.Required);
+        });
+        Assert.All(result.KeyHolderShortages, shortage =>
+        {
+            Assert.Equal(0, shortage.Actual);
+            Assert.Equal(1, shortage.Required);
+        });
+    }
 }

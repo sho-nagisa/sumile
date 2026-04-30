@@ -91,4 +91,52 @@ public class ShiftSubmissionServiceTests
                 Assert.False(submission.IsSelected);
             });
     }
+
+    [Fact]
+    public async Task SubmitShiftsAsync_EmptySubmissionCreatesNoneCellsAndCountsAsSubmitted()
+    {
+        await using var context = TestDb.CreateContext();
+        var service = new ShiftSubmissionService(context);
+        var pageService = new ShiftPageService(context, new ShiftTableService(context));
+        var submittedAt = new DateTime(2026, 5, 1, 9, 0, 0, DateTimeKind.Utc);
+        var user = new ApplicationUser
+        {
+            Id = "user-empty",
+            Name = "Empty User",
+            UserShiftRole = UserShiftRole.Normal
+        };
+
+        context.RecruitmentPeriods.Add(new RecruitmentPeriod
+        {
+            Id = 1,
+            StartDate = new DateTime(2026, 5, 1),
+            EndDate = new DateTime(2026, 5, 1),
+            IsOpen = true
+        });
+        context.ShiftDays.Add(new ShiftDay
+        {
+            Id = 101,
+            Date = new DateTime(2026, 5, 1),
+            RecruitmentPeriodId = 1
+        });
+        await context.SaveChangesAsync();
+
+        await service.SubmitShiftsAsync(user, "", 1, UserType.Normal, submittedAt);
+
+        var submissions = await context.ShiftSubmissions
+            .OrderBy(s => s.ShiftType)
+            .ToListAsync();
+        Assert.Equal(2, submissions.Count);
+        Assert.All(submissions, submission =>
+        {
+            Assert.Equal(user.Id, submission.UserId);
+            Assert.Equal(ShiftState.None, submission.ShiftStatus);
+            Assert.False(submission.IsSelected);
+            Assert.Equal(submittedAt, submission.SubmittedAt);
+        });
+
+        var page = await pageService.BuildSubmissionAsync(user, 1);
+        Assert.True(page.HasSubmitted);
+        Assert.Equal(2, page.ExistingSubmissions.Count);
+    }
 }
