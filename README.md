@@ -51,6 +51,24 @@ dotnet run
 - ソリューション `sumile.sln` を開く
 - デフォルトプロファイル（Kestrel）で実行（F5 または Ctrl+F5）
 
+## テスト実行手順
+
+テストは `sumile.Tests` プロジェクトにあります。EF Core InMemory を使うため、PostgreSQL や `.env` の準備は不要です。
+
+PowerShell でプロジェクトルートから実行します。
+
+```powershell
+dotnet restore
+dotnet build /p:UseAppHost=false
+dotnet test .\sumile.Tests\sumile.Tests.csproj
+```
+
+ビルド済みの状態でテストだけ再実行する場合:
+
+```powershell
+dotnet test .\sumile.Tests\sumile.Tests.csproj --no-build
+```
+
 ## トラブルシュート
 - `DB_CONNECTION_STRING` が見つからないエラー → `.env` を作成するか、PowerShell で環境変数を設定:
 
@@ -66,4 +84,3 @@ dotnet dev-certs https --trust
 ```
 
 不明点や環境に合わせた接続文字列の例が必要であれば教えてください。
-# sumile
