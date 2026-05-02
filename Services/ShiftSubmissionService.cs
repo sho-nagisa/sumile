@@ -31,13 +31,18 @@ namespace sumile.Services
                   ?? new List<ShiftSubmissionViewModel>();
 
             var shiftDayIds = shiftDays.Select(d => d.Id).ToList();
-            var existing = await _context.ShiftSubmissions
+            var existingSubmissions = await _context.ShiftSubmissions
                 .Where(s => s.UserId == user.Id && shiftDayIds.Contains(s.ShiftDayId))
                 .ToListAsync();
 
-            _context.ShiftSubmissions.RemoveRange(existing);
-
-            var submissions = new List<ShiftSubmission>();
+            var existingByCell = existingSubmissions
+                .GroupBy(s => (s.ShiftDayId, s.ShiftType))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .OrderByDescending(s => s.SubmittedAt ?? DateTime.MinValue)
+                        .ThenByDescending(s => s.Id)
+                        .First());
 
             foreach (var day in shiftDays)
             {
@@ -54,7 +59,17 @@ namespace sumile.Services
                         _ => ShiftState.None
                     };
 
-                    submissions.Add(new ShiftSubmission
+                    if (existingByCell.TryGetValue((day.Id, shiftType), out var submission))
+                    {
+                        submission.ShiftStatus = status;
+                        submission.IsSelected = status != ShiftState.None;
+                        submission.SubmittedAt = submittedAt;
+                        submission.UserType = userType;
+                        submission.UserShiftRole = user.UserShiftRole;
+                        continue;
+                    }
+
+                    _context.ShiftSubmissions.Add(new ShiftSubmission
                     {
                         UserId = user.Id,
                         ShiftDayId = day.Id,
@@ -68,7 +83,6 @@ namespace sumile.Services
                 }
             }
 
-            _context.ShiftSubmissions.AddRange(submissions);
             await _context.SaveChangesAsync();
         }
     }

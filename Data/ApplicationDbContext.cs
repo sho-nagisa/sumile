@@ -26,11 +26,16 @@ namespace sumile.Data
             base.OnModelCreating(builder);
 
             builder.Entity<ShiftDay>()
-                .HasIndex(d => new { d.RecruitmentPeriodId, d.Id });
+                .HasIndex(d => new { d.RecruitmentPeriodId, d.Date })
+                .IsUnique();
+
+            builder.Entity<ShiftSubmission>()
+                .HasIndex(s => new { s.UserId, s.ShiftDayId, s.ShiftType })
+                .IsUnique();
 
             // SubmitBackup: 募集期間 × 日付
             builder.Entity<SubmitBackup>()
                 .HasIndex(b => new { b.RecruitmentPeriodId, b.ShiftDayId });
-                }
+        }
     }
 }
