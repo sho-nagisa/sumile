@@ -88,16 +88,6 @@ namespace sumile.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> SubmissioList(int? periodId)
-        {
-            var currentUser = await _userManager.GetUserAsync(User);
-            if (currentUser == null) return RedirectToAction("Login", "Account");
-
-            var model = await _shiftPageService.BuildSubmittedListAsync(currentUser, periodId, includeUsers: true);
-            return View("SubmittedList", model);
-        }
-
-        [HttpGet]
         public async Task<IActionResult> SubmittedList(int? periodId)
         {
             var currentUser = await _userManager.GetUserAsync(User);

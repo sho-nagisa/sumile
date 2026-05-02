@@ -1,20 +1,19 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using sumile.Models;
-using sumile.ViewModels;
-using sumile.Services;
 using sumile.Authorization;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-///※１：確定版
+using sumile.Models;
+using sumile.Services;
+using sumile.ViewModels;
+
 namespace sumile.Controllers
 {
     [Authorize(Policy = AdminPolicy.Name)]
     public class AdminController : Controller
     {
+        private const string UpdateShiftsFailureMessage = "シフト更新中にエラーが発生しました。時間をおいて再度お試しください。";
+
+        private readonly ILogger<AdminController> _logger;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ShiftPdfService _pdfService;
         private readonly AutoShiftAssignmentService _autoShiftAssignmentService;
@@ -23,13 +22,15 @@ namespace sumile.Controllers
         private readonly AdminShiftEditService _adminShiftEditService;
 
         public AdminController(
-        UserManager<ApplicationUser> userManager,
-        ShiftPdfService pdfService,
-        AutoShiftAssignmentService autoShiftAssignmentService,
-        AdminDashboardService adminDashboardService,
-        AdminSubmissionPeriodService adminSubmissionPeriodService,
-        AdminShiftEditService adminShiftEditService)
+            ILogger<AdminController> logger,
+            UserManager<ApplicationUser> userManager,
+            ShiftPdfService pdfService,
+            AutoShiftAssignmentService autoShiftAssignmentService,
+            AdminDashboardService adminDashboardService,
+            AdminSubmissionPeriodService adminSubmissionPeriodService,
+            AdminShiftEditService adminShiftEditService)
         {
+            _logger = logger;
             _userManager = userManager;
             _pdfService = pdfService;
             _autoShiftAssignmentService = autoShiftAssignmentService;
@@ -87,14 +88,14 @@ namespace sumile.Controllers
             return View(model);
         }
 
-        [HttpGet]///※１
+        [HttpGet]
         public async Task<IActionResult> SetRecruitmentPeriod()
         {
             var model = await _adminSubmissionPeriodService.BuildDefaultPeriodModelAsync();
             return View(model);
         }
 
-        [HttpPost]///※１
+        [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SetRecruitmentPeriod(RecruitmentPeriodViewModel model)
         {
@@ -120,8 +121,6 @@ namespace sumile.Controllers
             return View(model);
         }
 
-
-
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> UpdateShifts([FromBody] ShiftUpdateRequest request, [FromQuery] int periodId)
@@ -145,9 +144,11 @@ namespace sumile.Controllers
             }
             catch (Exception ex)
             {
-                return Json(new { success = false, error = ex.InnerException?.Message ?? ex.Message });
+                _logger.LogError(ex, "Failed to update shifts for period {PeriodId}.", periodId);
+                return Json(new { success = false, error = UpdateShiftsFailureMessage });
             }
         }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ToggleSubmissionStatus(int id)
@@ -168,7 +169,7 @@ namespace sumile.Controllers
             return View(model);
         }
 
-        [HttpGet]///※１
+        [HttpGet]
         public async Task<IActionResult> ViewDailyWorkload(int? periodId)
         {
             var model = await _adminSubmissionPeriodService.BuildDailyWorkloadAsync(periodId);
@@ -181,7 +182,7 @@ namespace sumile.Controllers
             return View("DailyWorkload", model);
         }
 
-        [HttpGet]///※１
+        [HttpGet]
         public async Task<IActionResult> EditDailyWorkload(int? periodId)
         {
             var model = await _adminSubmissionPeriodService.BuildDailyWorkloadAsync(periodId);
@@ -194,7 +195,7 @@ namespace sumile.Controllers
             return View("DailyWorkload", model);
         }
 
-        [HttpPost]///※１
+        [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SaveDailyWorkload(int periodId, Dictionary<string, int> inputCounts, string redirectTo)
         {
@@ -234,6 +235,5 @@ namespace sumile.Controllers
             await _pdfService.GenerateShiftPdfAsync(periodId);
             return RedirectToAction("Index", new { periodId });
         }
-
     }
 }
