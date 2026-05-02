@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Http;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
-using System.Diagnostics;
 
 namespace sumile.Controllers
 {
@@ -14,13 +13,16 @@ namespace sumile.Controllers
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
+        private readonly ILogger<AccountController> _logger;
 
         public AccountController(
             UserManager<ApplicationUser> userManager,
-            SignInManager<ApplicationUser> signInManager)
+            SignInManager<ApplicationUser> signInManager,
+            ILogger<AccountController> logger)
         {
             _userManager = userManager;
             _signInManager = signInManager;
+            _logger = logger;
         }
 
         // ========== ユーザー登録 ==========
@@ -33,11 +35,8 @@ namespace sumile.Controllers
         [HttpPost]
         public async Task<IActionResult> Register(RegisterViewModel model)
         {
-            Debug.WriteLine("Register メソッドが呼ばれました");
-
             if (!ModelState.IsValid)
             {
-                Debug.WriteLine("ModelState が無効");
                 return View(model);
             }
 
@@ -68,7 +67,10 @@ namespace sumile.Controllers
             {
                 foreach (var error in result.Errors)
                 {
-                    Debug.WriteLine($"エラー: {error.Code} - {error.Description}");
+                    _logger.LogWarning(
+                        "User registration failed with identity error {ErrorCode}: {ErrorDescription}",
+                        error.Code,
+                        error.Description);
                     ModelState.AddModelError(string.Empty, error.Description);
                 }
                 return View(model);
