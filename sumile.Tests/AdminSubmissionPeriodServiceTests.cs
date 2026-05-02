@@ -62,4 +62,58 @@ public class AdminSubmissionPeriodServiceTests
         Assert.Equal(ShiftState.Accepted, backup.ShiftStatus);
         Assert.Equal(firstClosedAt, backup.BackedUpAt);
     }
+
+    [Fact]
+    public async Task SaveDailyWorkloadAsync_CreatesAndUpdatesWorkloadsForPeriodDays()
+    {
+        await using var context = TestDb.CreateContext();
+        var service = new AdminSubmissionPeriodService(context);
+        var firstDate = new DateTime(2026, 5, 1);
+        var secondDate = new DateTime(2026, 5, 2);
+        // 募集期間と対象日を追加
+        context.RecruitmentPeriods.Add(new RecruitmentPeriod
+        {
+            Id = 1,
+            StartDate = firstDate,
+            EndDate = secondDate,
+            IsOpen = true
+        });
+        context.ShiftDays.AddRange(
+            new ShiftDay
+            {
+                Id = 101,
+                Date = firstDate,
+                RecruitmentPeriodId = 1
+            },
+            new ShiftDay
+            {
+                Id = 102,
+                Date = secondDate,
+                RecruitmentPeriodId = 1
+            });
+        context.DailyWorkloads.Add(new global::DailyWorkload
+        {
+            ShiftDayId = 101,
+            RequiredCount = 20,
+            RequiredWorkers = 2
+        });
+        await context.SaveChangesAsync();
+
+        await service.SaveDailyWorkloadAsync(1, new Dictionary<string, int>
+        {
+            [firstDate.ToString("yyyy-MM-dd")] = 90,
+            [secondDate.ToString("yyyy-MM-dd")] = 60,
+            ["not-a-date"] = 999
+        });
+
+        var workloads = await context.DailyWorkloads
+            .OrderBy(w => w.ShiftDayId)
+            .ToListAsync();
+        // 既存日は更新され、新しい日は追加されることを検証
+        Assert.Equal(2, workloads.Count);
+        Assert.Equal(90, workloads[0].RequiredCount);
+        Assert.Equal(6, workloads[0].RequiredWorkers);
+        Assert.Equal(60, workloads[1].RequiredCount);
+        Assert.Equal(4, workloads[1].RequiredWorkers);
+    }
 }

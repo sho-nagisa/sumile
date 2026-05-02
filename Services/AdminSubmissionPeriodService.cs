@@ -153,6 +153,47 @@ namespace sumile.Services
             };
         }
 
+        public async Task SaveDailyWorkloadAsync(int periodId, Dictionary<string, int> inputCounts)
+        {
+            var shiftDays = await _context.ShiftDays
+                .Where(d => d.RecruitmentPeriodId == periodId)
+                .ToListAsync();
+
+            var shiftDayMap = shiftDays.ToDictionary(d => d.Date.Date, d => d);
+            var existing = await _context.DailyWorkloads
+                .Where(w => shiftDayMap.Values.Select(d => d.Id).Contains(w.ShiftDayId))
+                .ToListAsync();
+
+            foreach (var entry in inputCounts)
+            {
+                if (!DateTime.TryParse(entry.Key, out var parsedDate))
+                {
+                    continue;
+                }
+
+                var dateOnly = parsedDate.Date;
+                if (!shiftDayMap.TryGetValue(dateOnly, out var shiftDay))
+                {
+                    continue;
+                }
+
+                var workload = existing.FirstOrDefault(w => w.ShiftDayId == shiftDay.Id);
+                if (workload == null)
+                {
+                    workload = new DailyWorkload
+                    {
+                        ShiftDayId = shiftDay.Id
+                    };
+                    _context.DailyWorkloads.Add(workload);
+                }
+
+                workload.RequiredCount = entry.Value;
+                workload.RequiredWorkers = DailyWorkload.CalculateRequiredWorkers(entry.Value);
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
         private async Task BackupSubmissionsAsync(int periodId, DateTime backedUpAt)
         {
             var shiftDayIds = await _context.ShiftDays

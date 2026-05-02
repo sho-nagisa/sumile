@@ -1,9 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using sumile.Data;
 using sumile.Models;
 using sumile.ViewModels;
 using sumile.Services;
@@ -19,7 +16,6 @@ namespace sumile.Controllers
     public class AdminController : Controller
     {
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly ApplicationDbContext _context;
         private readonly ShiftPdfService _pdfService;
         private readonly AutoShiftAssignmentService _autoShiftAssignmentService;
         private readonly AdminDashboardService _adminDashboardService;
@@ -27,7 +23,6 @@ namespace sumile.Controllers
         private readonly AdminShiftEditService _adminShiftEditService;
 
         public AdminController(
-        ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         ShiftPdfService pdfService,
         AutoShiftAssignmentService autoShiftAssignmentService,
@@ -35,7 +30,6 @@ namespace sumile.Controllers
         AdminSubmissionPeriodService adminSubmissionPeriodService,
         AdminShiftEditService adminShiftEditService)
         {
-            _context = context;
             _userManager = userManager;
             _pdfService = pdfService;
             _autoShiftAssignmentService = autoShiftAssignmentService;
@@ -204,38 +198,7 @@ namespace sumile.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SaveDailyWorkload(int periodId, Dictionary<string, int> inputCounts, string redirectTo)
         {
-            var shiftDays = await _context.ShiftDays
-                .Where(d => d.RecruitmentPeriodId == periodId)
-                .ToListAsync();
-
-            var shiftDayMap = shiftDays.ToDictionary(d => d.Date.Date, d => d);
-            var existing = await _context.DailyWorkloads
-                .Where(w => shiftDayMap.Values.Select(d => d.Id).Contains(w.ShiftDayId))
-                .ToListAsync();
-
-            foreach (var entry in inputCounts)
-            {
-                if (!DateTime.TryParse(entry.Key, out var parsedDate)) continue;
-
-                var dateOnly = parsedDate.Date;
-
-                if (!shiftDayMap.TryGetValue(dateOnly, out var shiftDay)) continue;
-
-                var workload = existing.FirstOrDefault(w => w.ShiftDayId == shiftDay.Id);
-                if (workload == null)
-                {
-                    workload = new DailyWorkload
-                    {
-                        ShiftDayId = shiftDay.Id
-                    };
-                    _context.DailyWorkloads.Add(workload);
-                }
-
-                workload.RequiredCount = entry.Value;
-                workload.RequiredWorkers = DailyWorkload.CalculateRequiredWorkers(entry.Value);
-            }
-
-            await _context.SaveChangesAsync();
+            await _adminSubmissionPeriodService.SaveDailyWorkloadAsync(periodId, inputCounts);
             await _pdfService.GenerateShiftPdfAsync(periodId);
             TempData["Message"] = "保存しました。";
 
