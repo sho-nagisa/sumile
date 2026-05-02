@@ -45,20 +45,15 @@ namespace sumile.Services
                 IsOpen = true
             };
 
-            _context.RecruitmentPeriods.Add(newRecruitment);
-            await _context.SaveChangesAsync();
-
-            var days = new List<ShiftDay>();
             for (var date = startUtc.Date; date <= endUtc.Date; date = date.AddDays(1))
             {
-                days.Add(new ShiftDay
+                newRecruitment.ShiftDays.Add(new ShiftDay
                 {
-                    Date = date,
-                    RecruitmentPeriodId = newRecruitment.Id
+                    Date = date
                 });
             }
 
-            _context.ShiftDays.AddRange(days);
+            _context.RecruitmentPeriods.Add(newRecruitment);
             await _context.SaveChangesAsync();
         }
 

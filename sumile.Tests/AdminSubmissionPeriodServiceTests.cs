@@ -1,12 +1,44 @@
 using Microsoft.EntityFrameworkCore;
 using sumile.Models;
 using sumile.Services;
+using sumile.ViewModels;
 using Xunit;
 
 namespace sumile.Tests;
 
 public class AdminSubmissionPeriodServiceTests
 {
+    [Fact]
+    public async Task CreatePeriodAsync_CreatesPeriodWithShiftDaysInSingleUnit()
+    {
+        await using var context = TestDb.CreateContext();
+        var service = new AdminSubmissionPeriodService(context);
+        var startDate = new DateTime(2026, 5, 1);
+        var endDate = new DateTime(2026, 5, 3);
+
+        await service.CreatePeriodAsync(new RecruitmentPeriodViewModel
+        {
+            StartDate = startDate,
+            EndDate = endDate
+        });
+
+        var period = await context.RecruitmentPeriods
+            .Include(p => p.ShiftDays)
+            .SingleAsync();
+        var shiftDays = period.ShiftDays
+            .OrderBy(d => d.Date)
+            .ToList();
+
+        Assert.Equal(DateTimeKind.Utc, period.StartDate.Kind);
+        Assert.Equal(DateTimeKind.Utc, period.EndDate.Kind);
+        Assert.True(period.IsOpen);
+        Assert.Equal(3, shiftDays.Count);
+        Assert.All(shiftDays, day => Assert.Equal(period.Id, day.RecruitmentPeriodId));
+        Assert.Equal(
+            new[] { startDate, startDate.AddDays(1), endDate },
+            shiftDays.Select(d => d.Date).ToArray());
+    }
+
     [Fact]
     public async Task ToggleSubmissionStatusAsync_WhenClosingPeriod_BacksUpSubmissionsOnlyOnce()
     {
