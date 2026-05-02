@@ -9,6 +9,7 @@ namespace sumile.Tests;
 public class ShiftSubmissionServiceTests
 {
     [Fact]
+    // シフト再提出時に既存提出を置き換え、全シフトセルの状態が正しく保存されることを検証するテスト
     public async Task SubmitShiftsAsync_ReplacesExistingSubmissionsAndCreatesEveryShiftCell()
     {
         await using var context = TestDb.CreateContext();
@@ -93,6 +94,7 @@ public class ShiftSubmissionServiceTests
     }
 
     [Fact]
+    // 空の提出を行った場合に、全シフトセルが状態なしで作成され、提出済みとカウントされることを検証するテスト
     public async Task SubmitShiftsAsync_EmptySubmissionCreatesNoneCellsAndCountsAsSubmitted()
     {
         await using var context = TestDb.CreateContext();

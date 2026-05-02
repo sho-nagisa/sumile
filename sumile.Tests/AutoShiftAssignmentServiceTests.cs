@@ -4,10 +4,11 @@ using sumile.Services;
 using Xunit;
 
 namespace sumile.Tests;
-
+//自動割り当てに関するテストクラス
 public class AutoShiftAssignmentServiceTests
 {
     [Fact]
+    // 募集人数が十分にいる場合に、必要な従業員数の半分をキーホルダーとして割り当て、空き率を均等にすることを検証するテスト
     public async Task AssignAsync_KeepsHalfOfRequiredWorkersAsKeyHoldersAndBalancesBlankRate()
     {
         await using var context = TestDb.CreateContext();
@@ -20,26 +21,28 @@ public class AutoShiftAssignmentServiceTests
             new ApplicationUser { Id = "normal-1", Name = "Normal 1", UserShiftRole = UserShiftRole.Normal },
             new ApplicationUser { Id = "normal-2", Name = "Normal 2", UserShiftRole = UserShiftRole.Normal }
         };
-
+        // 従業員の追加
         context.RecruitmentPeriods.Add(new RecruitmentPeriod
         {
             Id = 1,
             StartDate = new DateTime(2026, 5, 1),
             EndDate = new DateTime(2026, 5, 1)
         });
+        // シフトの提出日を追加
         context.ShiftDays.Add(new ShiftDay
         {
             Id = 101,
             Date = new DateTime(2026, 5, 1),
             RecruitmentPeriodId = 1
         });
+        // 対応客数を追加
         context.DailyWorkloads.Add(new global::DailyWorkload
         {
             ShiftDayId = 101,
             RequiredCount = 40,
             RequiredWorkers = 2
         });
-
+        // シフト提出を追加
         foreach (var user in users)
         {
             foreach (ShiftType shiftType in Enum.GetValues(typeof(ShiftType)))
@@ -61,7 +64,7 @@ public class AutoShiftAssignmentServiceTests
         await context.SaveChangesAsync();
 
         var result = await service.AssignAsync(1, assignedAt);
-
+        // 結果の検証
         Assert.Empty(result.KeyHolderShortages);
         Assert.Empty(result.WorkerShortages);
         Assert.Equal(2, result.ShiftCellCount);
@@ -94,31 +97,34 @@ public class AutoShiftAssignmentServiceTests
     }
 
     [Fact]
+    // 募集人数が不足している場合に、必要な従業員数とキーホルダー数の不足を正しく報告することを検証するテスト
     public async Task AssignAsync_ReportsWorkerAndKeyHolderShortagesWhenCandidatesAreInsufficient()
     {
         await using var context = TestDb.CreateContext();
         var service = new AutoShiftAssignmentService(context);
         var assignedAt = new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc);
-
+        // 募集期間とシフト日を追加
         context.RecruitmentPeriods.Add(new RecruitmentPeriod
         {
             Id = 1,
             StartDate = new DateTime(2026, 5, 1),
             EndDate = new DateTime(2026, 5, 1)
         });
+        // シフトの提出日を追加
         context.ShiftDays.Add(new ShiftDay
         {
             Id = 101,
             Date = new DateTime(2026, 5, 1),
             RecruitmentPeriodId = 1
         });
+        // 対応客数を追加
         context.DailyWorkloads.Add(new global::DailyWorkload
         {
             ShiftDayId = 101,
             RequiredCount = 40,
             RequiredWorkers = 2
         });
-
+        // シフト提出を追加 - 募集人数が不足している状況を作るため、2人の従業員が両方とも同じシフトタイプで提出
         foreach (ShiftType shiftType in Enum.GetValues(typeof(ShiftType)))
         {
             context.ShiftSubmissions.Add(new ShiftSubmission

@@ -4,10 +4,11 @@ using sumile.Services;
 using Xunit;
 
 namespace sumile.Tests;
-
+// シフト交換のワークフローに関するテスト
 public class ShiftExchangeWorkflowServiceTests
 {
     [Fact]
+    // 自分の全体公開交換リクエストをキャンセルすることの検証テスト
     public async Task CancelRequestAsync_CancelsOwnOpenRequest()
     {
         await using var context = TestDb.CreateContext();
@@ -33,6 +34,7 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    // 自分以外のユーザーはキャンセルできないことを検証するテスト
     public async Task CancelRequestAsync_RejectsDifferentUser()
     {
         await using var context = TestDb.CreateContext();
@@ -57,6 +59,7 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    // 応募キャンセルにより、募集が再度公開されることを検証するテスト
     public async Task CancelApplicationAsync_ReopensRequestAndClearsAcceptedUser()
     {
         await using var context = TestDb.CreateContext();
@@ -88,6 +91,7 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    // 拒否により、交換リクエストが拒否状態になることを検証するテスト
     public async Task RejectExchangeAsync_RejectsPendingExchange()
     {
         await using var context = TestDb.CreateContext();
@@ -115,6 +119,7 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    // 承認により、シフトが応募者に移動と編集ログが記録されることを検証するテスト
     public async Task FinalizeAsync_TransfersShiftToApplicantAndWritesEditLogs()
     {
         await using var context = TestDb.CreateContext();
@@ -201,6 +206,7 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    // 自分の交換リクエストを作成する際に、交換不可の提出がある場合は拒否されることを検証するテスト
     public async Task CreateRequestAsync_RejectsNonExchangeableSubmission()
     {
         await using var context = TestDb.CreateContext();
@@ -229,6 +235,7 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    // 自分の交換リクエストを作成する際に、鍵持ちの提出がある場合でも作成できることを検証するテスト
     public async Task CreateRequestAsync_AllowsKeyHolderSubmission()
     {
         await using var context = TestDb.CreateContext();
@@ -260,6 +267,7 @@ public class ShiftExchangeWorkflowServiceTests
     }
 
     [Fact]
+    // 交換に出していたシフトが交換不可になった場合に、承認処理が拒否されることを検証するテスト
     public async Task FinalizeAsync_RejectsWhenOfferedSubmissionIsNoLongerExchangeable()
     {
         await using var context = TestDb.CreateContext();

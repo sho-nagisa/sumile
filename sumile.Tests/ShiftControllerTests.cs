@@ -19,6 +19,7 @@ namespace sumile.Tests;
 public class ShiftControllerTests
 {
     [Fact]
+    // 募集期間が締め切られている場合に、エラーメッセージが表示されることを検証するテスト
     public async Task SubmitShifts_WhenPeriodIsClosed_RedirectsWithoutCreatingSubmissions()
     {
         await using var context = TestDb.CreateContext();
@@ -70,7 +71,7 @@ public class ShiftControllerTests
         Assert.Equal("この募集期間は締め切られているため提出できません。", controller.TempData["ErrorMessage"]);
         Assert.Empty(await context.ShiftSubmissions.ToListAsync());
     }
-
+    // 他のテストケース用の型
     private static UserManager<ApplicationUser> CreateUserManager(ApplicationDbContext context)
     {
         return new UserManager<ApplicationUser>(

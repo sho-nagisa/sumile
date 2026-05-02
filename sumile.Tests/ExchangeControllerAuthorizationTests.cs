@@ -4,10 +4,11 @@ using sumile.Controllers;
 using Xunit;
 
 namespace sumile.Tests;
-
+// シフト交換に関するコントローラーの認可設定を検証するテストクラス
 public class ExchangeControllerAuthorizationTests
 {
     [Fact]
+    // 対象の従業員だけがアクセスできることを検証するテスト
     public void ExchangeController_RequiresAuthenticatedUser()
     {
         var attribute = Attribute.GetCustomAttribute(
@@ -18,6 +19,7 @@ public class ExchangeControllerAuthorizationTests
     }
 
     [Fact]
+    // 管理者だけがアクセスできることを検証するテスト
     public void AdminController_RequiresAdminPolicy()
     {
         var attribute = Attribute.GetCustomAttribute(
@@ -29,6 +31,7 @@ public class ExchangeControllerAuthorizationTests
     }
 
     [Theory]
+    // 管理者だけがアクセスできることを検証するテスト
     [InlineData(nameof(global::ExchangeController.FinalizeExchange))]
     [InlineData(nameof(global::ExchangeController.RejectExchange))]
     public void ExchangeController_AdminActionsRequireAdminPolicy(string actionName)
