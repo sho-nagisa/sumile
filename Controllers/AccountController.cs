@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using sumile.Authorization;
 
 namespace sumile.Controllers
 {
@@ -27,12 +28,15 @@ namespace sumile.Controllers
 
         // ========== ユーザー登録 ==========
         [HttpGet]
+        [Authorize(Policy = AdminPolicy.Name)]
         public IActionResult Register()
         {
             return View(new RegisterViewModel());
         }
 
         [HttpPost]
+        [Authorize(Policy = AdminPolicy.Name)]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Register(RegisterViewModel model)
         {
             if (!ModelState.IsValid)
@@ -76,13 +80,8 @@ namespace sumile.Controllers
                 return View(model);
             }
 
-            // 自動ログイン＋セッション保存
-            await _signInManager.SignInAsync(user, isPersistent: false);
-            HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
-            HttpContext.Session.SetString("UserId", user.Id);
-
-            TempData["SuccessMessage"] = "登録が成功しました";
-            return RedirectToAction("Index", "Shift");
+            TempData["SuccessMessage"] = $"従業員を登録しました。ログインID: {newCustomId}";
+            return RedirectToAction(nameof(Register));
         }
 
         // ========== ログイン ==========
@@ -94,6 +93,7 @@ namespace sumile.Controllers
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
         {
             ViewData["ReturnUrl"] = returnUrl;
