@@ -1,95 +1,24 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using PdfSharpCore.Fonts;
 using DotNetEnv;
-using sumile.Authorization;
-using sumile.Data;
-using sumile.Models;
-using sumile.Services;
+using PdfSharpCore.Fonts;
+using sumile.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 環境変数を `.env` から読み込む（ローカル開発用） ---
 Env.Load();
 
-// 環境変数 `DB_CONNECTION_STRING` を取得
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 if (string.IsNullOrEmpty(connectionString))
 {
     throw new InvalidOperationException("DB_CONNECTION_STRING 環境変数が設定されていません。");
 }
+
 builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+builder.Services.AddApplicationServices(builder.Configuration);
 
-// --- サービス登録 ---
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
-{
-    options.Password.RequiredLength = 6;
-    options.Password.RequireUppercase = false;
-    options.Password.RequireLowercase = true;
-    options.Password.RequireDigit = true;
-    options.Password.RequireNonAlphanumeric = false;
-
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10);
-    options.Lockout.MaxFailedAccessAttempts = 5;
-    options.Lockout.AllowedForNewUsers = true;
-})
-.AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
-
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy(AdminPolicy.Name, policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.Requirements.Add(new AdminRequirement());
-    });
-});
-builder.Services.AddScoped<IAuthorizationHandler, AdminAuthorizationHandler>();
-
-// セッション設定
-builder.Services.AddSession(options =>
-{
-    options.IdleTimeout = TimeSpan.FromMinutes(30);
-    options.Cookie.HttpOnly = true;
-    options.Cookie.IsEssential = true;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    options.Cookie.SameSite = SameSiteMode.Strict;
-});
-
-builder.Services.AddAntiforgery(options =>
-{
-    options.HeaderName = "RequestVerificationToken";
-});
-
-builder.Services.AddControllersWithViews();
-builder.Services.AddScoped<ShiftPdfService>();
-builder.Services.AddScoped<IShiftService, ShiftService>();
-builder.Services.AddScoped<ShiftTableService>();
-builder.Services.AddScoped<ShiftStatusDisplayService>();
-builder.Services.AddScoped<ShiftSubmissionService>();
-builder.Services.AddScoped<ShiftPageService>();
-builder.Services.AddScoped<AutoShiftAssignmentService>();
-builder.Services.AddScoped<ShiftExchangeWorkflowService>();
-builder.Services.AddScoped<ExchangePageService>();
-builder.Services.AddScoped<AdminDashboardService>();
-builder.Services.AddScoped<AdminSubmissionPeriodService>();
-builder.Services.AddScoped<AdminShiftEditService>();
-
-// カスタムフォントのリゾルバー登録
 GlobalFontSettings.FontResolver = new CustomFontResolver();
 
 var app = builder.Build();
 
-// --- HTTP パイプライン設定 ---
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -100,7 +29,6 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
-// セキュリティヘッダー
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
