@@ -39,6 +39,21 @@ namespace sumile.Extensions
                 .AddEntityFrameworkStores<ApplicationDbContext>()
                 .AddDefaultTokenProviders();
 
+            services.ConfigureApplicationCookie(options =>
+            {
+                options.Cookie.Name = "__Host-sumile.auth";
+                options.Cookie.HttpOnly = true;
+                options.Cookie.IsEssential = true;
+                options.Cookie.Path = "/";
+                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+                options.Cookie.SameSite = SameSiteMode.Strict;
+                options.LoginPath = "/Account/Login";
+                options.LogoutPath = "/Account/Logout";
+                options.AccessDeniedPath = "/Account/AccessDenied";
+                options.ExpireTimeSpan = TimeSpan.FromHours(8);
+                options.SlidingExpiration = true;
+            });
+
             return services;
         }
 

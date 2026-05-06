@@ -1,0 +1,11 @@
+@{
+    ViewData["Title"] = "アクセス権限がありません";
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<div class="alert alert-warning">
+    このページを表示する権限がありません。
+</div>
+
+<a asp-controller="Shift" asp-action="Index" class="btn btn-primary">シフト一覧へ戻る</a>

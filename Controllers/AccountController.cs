@@ -92,6 +92,12 @@ namespace sumile.Controllers
             return View();
         }
 
+        [HttpGet]
+        public IActionResult AccessDenied()
+        {
+            return View();
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
