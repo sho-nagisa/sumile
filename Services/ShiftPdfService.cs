@@ -12,6 +12,7 @@ namespace sumile.Services
     {
         private const int MaxDaysPerPage = 10;
         private const string FontFamily = "NotoSansJP";
+        private const string ShiftPdfDirectoryName = "shift_pdfs";
         private const double Margin = 8;
         private const double UserColumnWidth = 94;
         private const double RoleColumnWidth = 30;
@@ -99,17 +100,12 @@ namespace sumile.Services
             using var fs = new FileStream(filePath, FileMode.Create);
             document.Save(fs);
 
-            return GetShiftPdfRelativePath(periodId);
-        }
-
-        public string GetShiftPdfRelativePath(int periodId)
-        {
-            return $"/shift_pdfs/shift_{periodId}.pdf";
+            return filePath;
         }
 
         public string GetShiftPdfPhysicalPath(int periodId)
         {
-            return Path.Combine(_env.WebRootPath, "shift_pdfs", $"shift_{periodId}.pdf");
+            return Path.Combine(_env.ContentRootPath, "App_Data", ShiftPdfDirectoryName, $"shift_{periodId}.pdf");
         }
 
         public async Task<string> EnsureShiftPdfAsync(int periodId)
@@ -119,7 +115,7 @@ namespace sumile.Services
                 return await GenerateShiftPdfAsync(periodId);
             }
 
-            return GetShiftPdfRelativePath(periodId);
+            return GetShiftPdfPhysicalPath(periodId);
         }
 
         private async Task<bool> NeedsRegenerationAsync(int periodId)

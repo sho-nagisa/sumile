@@ -14,3 +14,4 @@ obj/
 
 # Generated shift PDFs
 wwwroot/shift_pdfs/*.pdf
+App_Data/shift_pdfs/*.pdf

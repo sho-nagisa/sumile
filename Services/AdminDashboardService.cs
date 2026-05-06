@@ -76,12 +76,10 @@ namespace sumile.Services
                 DiffKeys = await BuildDiffKeysAsync(shiftDayIds)
             };
 
-            var pdfUrl = await _pdfService.EnsureShiftPdfAsync(selectedPeriod.Id);
-            var pdfPath = _pdfService.GetShiftPdfPhysicalPath(selectedPeriod.Id);
+            var pdfPath = await _pdfService.EnsureShiftPdfAsync(selectedPeriod.Id);
             if (File.Exists(pdfPath))
             {
                 var updatedAt = File.GetLastWriteTime(pdfPath);
-                dashboard.ShiftPdfUrl = $"{pdfUrl}?v={updatedAt.Ticks}";
                 dashboard.ShiftPdfUpdatedAt = updatedAt;
             }
 

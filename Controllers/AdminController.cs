@@ -53,6 +53,7 @@ namespace sumile.Controllers
             dashboard.CurrentUserCustomId = currentUser?.CustomId > 0
                 ? currentUser.CustomId.ToString()
                 : null;
+            dashboard.ShiftPdfUrl = BuildShiftPdfUrl(dashboard);
 
             return View(dashboard);
         }
@@ -65,6 +66,32 @@ namespace sumile.Controllers
             TempData["SuccessMessage"] = "PDFを再生成しました。";
 
             return RedirectToAction("Index", new { periodId });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> ShiftPdf(int periodId)
+        {
+            try
+            {
+                var filePath = await _pdfService.EnsureShiftPdfAsync(periodId);
+                if (!System.IO.File.Exists(filePath))
+                {
+                    return NotFound();
+                }
+
+                Response.Headers["Cache-Control"] = "private, no-store";
+                Response.Headers["Pragma"] = "no-cache";
+                Response.Headers["Expires"] = "0";
+
+                var result = PhysicalFile(filePath, "application/pdf");
+                result.EnableRangeProcessing = true;
+                return result;
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Shift PDF was requested for an unknown period {PeriodId}.", periodId);
+                return NotFound();
+            }
         }
 
         [HttpGet]
@@ -234,6 +261,23 @@ namespace sumile.Controllers
 
             await _pdfService.GenerateShiftPdfAsync(periodId);
             return RedirectToAction("Index", new { periodId });
+        }
+
+        private string? BuildShiftPdfUrl(AdminDashboardViewModel dashboard)
+        {
+            if (!dashboard.ShiftPdfUpdatedAt.HasValue)
+            {
+                return null;
+            }
+
+            return Url.Action(
+                nameof(ShiftPdf),
+                "Admin",
+                new
+                {
+                    periodId = dashboard.SelectedPeriodId,
+                    v = dashboard.ShiftPdfUpdatedAt.Value.Ticks
+                });
         }
     }
 }
