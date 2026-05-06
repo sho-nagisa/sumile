@@ -17,6 +17,20 @@ builder.Services.AddApplicationServices(builder.Configuration);
 
 GlobalFontSettings.FontResolver = new CustomFontResolver();
 
+const string ContentSecurityPolicy =
+    "default-src 'self'; " +
+    "base-uri 'self'; " +
+    "connect-src 'self'; " +
+    "font-src 'self'; " +
+    "form-action 'self'; " +
+    "frame-ancestors 'none'; " +
+    "img-src 'self' data:; " +
+    "object-src 'self'; " +
+    "script-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline'";
+const string PermissionsPolicy =
+    "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()";
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -26,6 +40,22 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        var headers = context.Response.Headers;
+        headers["Content-Security-Policy"] = ContentSecurityPolicy;
+        headers["Permissions-Policy"] = PermissionsPolicy;
+        headers["X-Content-Type-Options"] = "nosniff";
+        headers["X-Frame-Options"] = "DENY";
+        headers["X-XSS-Protection"] = "0";
+        headers["Referrer-Policy"] = "no-referrer";
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/shift_pdfs") &&
@@ -39,15 +69,6 @@ app.Use(async (context, next) =>
 });
 app.UseStaticFiles();
 app.UseRouting();
-
-app.Use(async (context, next) =>
-{
-    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    context.Response.Headers["X-Frame-Options"] = "DENY";
-    context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
-    context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    await next();
-});
 
 app.UseSession();
 app.UseAuthentication();
