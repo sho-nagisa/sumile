@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using sumile.Models;
 using Xunit;
 
@@ -5,6 +6,23 @@ namespace sumile.Tests;
 
 public class ModelConstraintTests
 {
+    [Fact]
+    public void ApplicationUser_HasUniqueIndexForPositiveCustomId()
+    {
+        using var context = TestDb.CreateContext();
+
+        var index = context.Model
+            .FindEntityType(typeof(ApplicationUser))!
+            .GetIndexes()
+            .SingleOrDefault(i => i.Properties
+                .Select(p => p.Name)
+                .SequenceEqual(new[] { nameof(ApplicationUser.CustomId) }));
+
+        Assert.NotNull(index);
+        Assert.True(index!.IsUnique);
+        Assert.Equal("\"CustomId\" > 0", index.GetFilter());
+    }
+
     [Fact]
     public void ShiftDay_HasUniqueIndexForPeriodAndDate()
     {

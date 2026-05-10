@@ -260,6 +260,10 @@ namespace sumile.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
+                    b.HasIndex("CustomId")
+                        .IsUnique()
+                        .HasFilter("\"CustomId\" > 0");
+
                     b.ToTable("AspNetUsers", (string)null);
                 });
 

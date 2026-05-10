@@ -33,6 +33,11 @@ namespace sumile.Data
                 .HasIndex(s => new { s.UserId, s.ShiftDayId, s.ShiftType })
                 .IsUnique();
 
+            builder.Entity<ApplicationUser>()
+                .HasIndex(u => u.CustomId)
+                .IsUnique()
+                .HasFilter("\"CustomId\" > 0");
+
             // SubmitBackup: 募集期間 × 日付
             builder.Entity<SubmitBackup>()
                 .HasIndex(b => new { b.RecruitmentPeriodId, b.ShiftDayId });

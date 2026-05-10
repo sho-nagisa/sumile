@@ -6,23 +6,32 @@ using Microsoft.AspNetCore.Http;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using sumile.Authorization;
+using sumile.Data;
+using System.Data;
 
 namespace sumile.Controllers
 {
     public class AccountController : Controller
     {
+        private const int MaxCustomIdRegistrationAttempts = 5;
+        private const long CustomIdAllocationLockKey = 2026051001L;
+
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
+        private readonly ApplicationDbContext _context;
         private readonly ILogger<AccountController> _logger;
 
         public AccountController(
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
+            ApplicationDbContext context,
             ILogger<AccountController> logger)
         {
             _userManager = userManager;
             _signInManager = signInManager;
+            _context = context;
             _logger = logger;
         }
 
@@ -44,32 +53,11 @@ namespace sumile.Controllers
                 return View(model);
             }
 
-            // CustomId 自動採番
-            int newCustomId = 1;
-            var existingIds = _userManager.Users
-                .Select(u => u.CustomId)
-                .OrderBy(id => id)
-                .ToList();
+            var registration = await RegisterWithUniqueCustomIdAsync(model);
 
-            foreach (var id in existingIds)
+            if (!registration.IdentityResult.Succeeded)
             {
-                if (id == newCustomId) newCustomId++;
-                else break;
-            }
-
-            var user = new ApplicationUser
-            {
-                UserName = newCustomId.ToString(),
-                CustomId = newCustomId,
-                Name = model.Name,
-                UserType = "0" // 登録時は基本的に Normal 扱いにしておく
-            };
-
-            var result = await _userManager.CreateAsync(user, model.Password);
-
-            if (!result.Succeeded)
-            {
-                foreach (var error in result.Errors)
+                foreach (var error in registration.IdentityResult.Errors)
                 {
                     _logger.LogWarning(
                         "User registration failed with identity error {ErrorCode}: {ErrorDescription}",
@@ -80,8 +68,154 @@ namespace sumile.Controllers
                 return View(model);
             }
 
-            TempData["SuccessMessage"] = $"従業員を登録しました。ログインID: {newCustomId}";
+            TempData["SuccessMessage"] = $"従業員を登録しました。ログインID: {registration.CustomId}";
             return RedirectToAction(nameof(Register));
+        }
+
+        private async Task<CustomIdRegistrationResult> RegisterWithUniqueCustomIdAsync(RegisterViewModel model)
+        {
+            for (var attempt = 1; attempt <= MaxCustomIdRegistrationAttempts; attempt++)
+            {
+                try
+                {
+                    var registration = _context.Database.IsRelational()
+                        ? await RegisterWithRelationalTransactionAsync(model)
+                        : await CreateUserWithNextCustomIdAsync(model);
+
+                    if (!registration.IdentityResult.Succeeded &&
+                        IsRetryableIdentityConflict(registration.IdentityResult) &&
+                        attempt < MaxCustomIdRegistrationAttempts)
+                    {
+                        _logger.LogWarning(
+                            "CustomId allocation conflicted on attempt {Attempt}; retrying registration.",
+                            attempt);
+                        _context.ChangeTracker.Clear();
+                        continue;
+                    }
+
+                    return registration;
+                }
+                catch (Exception ex) when (IsRetryableRegistrationException(ex))
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "CustomId allocation failed with a retryable database error on attempt {Attempt}.",
+                        attempt);
+                    _context.ChangeTracker.Clear();
+                }
+            }
+
+            return CustomIdRegistrationResult.Failed(
+                "登録が同時に実行されたため、ログインIDを確定できませんでした。もう一度登録してください。");
+        }
+
+        private async Task<CustomIdRegistrationResult> RegisterWithRelationalTransactionAsync(RegisterViewModel model)
+        {
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+            await AcquireCustomIdAllocationLockAsync();
+            var registration = await CreateUserWithNextCustomIdAsync(model);
+            if (!registration.IdentityResult.Succeeded)
+            {
+                return registration;
+            }
+
+            await transaction.CommitAsync();
+            return registration;
+        }
+
+        private async Task AcquireCustomIdAllocationLockAsync()
+        {
+            if (_context.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_xact_lock({CustomIdAllocationLockKey})");
+            }
+        }
+
+        private async Task<CustomIdRegistrationResult> CreateUserWithNextCustomIdAsync(RegisterViewModel model)
+        {
+            var newCustomId = await GetNextAvailableCustomIdAsync();
+
+            var user = new ApplicationUser
+            {
+                UserName = newCustomId.ToString(),
+                CustomId = newCustomId,
+                Name = model.Name,
+                UserType = "0" // 登録時は基本的に Normal 扱いにしておく
+            };
+
+            var result = await _userManager.CreateAsync(user, model.Password);
+            return new CustomIdRegistrationResult(result, newCustomId);
+        }
+
+        private async Task<int> GetNextAvailableCustomIdAsync()
+        {
+            var existingIds = await _context.Users
+                .Where(u => u.CustomId > 0)
+                .Select(u => u.CustomId)
+                .OrderBy(id => id)
+                .ToListAsync();
+
+            var newCustomId = 1;
+            foreach (var id in existingIds)
+            {
+                if (id == newCustomId)
+                {
+                    newCustomId++;
+                    continue;
+                }
+
+                if (id > newCustomId)
+                {
+                    break;
+                }
+            }
+
+            return newCustomId;
+        }
+
+        private static bool IsRetryableIdentityConflict(IdentityResult result)
+        {
+            return result.Errors.Any(error => error.Code == "DuplicateUserName");
+        }
+
+        private static bool IsRetryableRegistrationException(Exception exception)
+        {
+            var postgresException = FindPostgresException(exception);
+            return postgresException?.SqlState is PostgresErrorCodes.UniqueViolation
+                or PostgresErrorCodes.SerializationFailure
+                or PostgresErrorCodes.DeadlockDetected;
+        }
+
+        private static PostgresException? FindPostgresException(Exception exception)
+        {
+            var current = exception;
+            while (current != null)
+            {
+                if (current is PostgresException postgresException)
+                {
+                    return postgresException;
+                }
+
+                current = current.InnerException;
+            }
+
+            return null;
+        }
+
+        private sealed record CustomIdRegistrationResult(IdentityResult IdentityResult, int? CustomId)
+        {
+            public static CustomIdRegistrationResult Failed(string message)
+            {
+                return new CustomIdRegistrationResult(
+                    IdentityResult.Failed(new IdentityError
+                    {
+                        Code = "CustomIdAllocationConflict",
+                        Description = message
+                    }),
+                    null);
+            }
         }
 
         // ========== ログイン ==========
