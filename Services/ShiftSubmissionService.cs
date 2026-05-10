@@ -18,7 +18,6 @@ namespace sumile.Services
             ApplicationUser user,
             string selectedShifts,
             int periodId,
-            UserType userType,
             DateTime submittedAt)
         {
             var shiftDays = await _context.ShiftDays
@@ -64,7 +63,7 @@ namespace sumile.Services
                         submission.ShiftStatus = status;
                         submission.IsSelected = status != ShiftState.None;
                         submission.SubmittedAt = submittedAt;
-                        submission.UserType = userType;
+                        submission.Source = ShiftSubmissionSource.UserSubmitted;
                         submission.UserShiftRole = user.UserShiftRole;
                         continue;
                     }
@@ -77,7 +76,7 @@ namespace sumile.Services
                         ShiftStatus = status,
                         IsSelected = status != ShiftState.None,
                         SubmittedAt = submittedAt,
-                        UserType = userType,
+                        Source = ShiftSubmissionSource.UserSubmitted,
                         UserShiftRole = user.UserShiftRole
                     });
                 }

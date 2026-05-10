@@ -10,6 +10,23 @@ namespace sumile.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql("""
+                DELETE FROM "ShiftSubmissions"
+                WHERE "Id" IN (
+                    SELECT "Id"
+                    FROM (
+                        SELECT
+                            "Id",
+                            ROW_NUMBER() OVER (
+                                PARTITION BY "UserId", "ShiftDayId", "ShiftType"
+                                ORDER BY COALESCE("SubmittedAt", '-infinity'::timestamp with time zone) DESC, "Id" DESC
+                            ) AS row_number
+                        FROM "ShiftSubmissions"
+                    ) ranked
+                    WHERE ranked.row_number > 1
+                );
+                """);
+
             migrationBuilder.DropIndex(
                 name: "IX_ShiftSubmissions_UserId",
                 table: "ShiftSubmissions");

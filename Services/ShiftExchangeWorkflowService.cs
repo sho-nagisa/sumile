@@ -227,7 +227,7 @@ namespace sumile.Services
                 offered.ShiftStatus = ShiftState.NotAccepted;
                 offered.IsSelected = false;
                 offered.SubmittedAt = updatedAt;
-                offered.UserType = UserType.AdminUpdated;
+                offered.Source = ShiftSubmissionSource.AdminEdited;
 
                 var accepted = await _context.ShiftSubmissions
                     .FirstOrDefaultAsync(s =>
@@ -252,7 +252,7 @@ namespace sumile.Services
                 accepted.IsSelected = true;
                 accepted.SubmittedAt = updatedAt;
                 accepted.ShiftStatus = ShiftState.Accepted;
-                accepted.UserType = UserType.AdminUpdated;
+                accepted.Source = ShiftSubmissionSource.AdminEdited;
                 accepted.UserShiftRole = exchange.AcceptedByUser?.UserShiftRole ?? accepted.UserShiftRole;
 
                 _context.ShiftSubmissions.Update(offered);

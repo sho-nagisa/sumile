@@ -146,7 +146,7 @@ public class ShiftExchangeWorkflowServiceTests
             ShiftStatus = ShiftState.Accepted,
             IsSelected = true,
             SubmittedAt = updatedAt.AddDays(-1),
-            UserType = UserType.Normal,
+            Source = ShiftSubmissionSource.UserSubmitted,
             UserShiftRole = UserShiftRole.Normal
         });
         context.Users.Add(new ApplicationUser
@@ -180,7 +180,7 @@ public class ShiftExchangeWorkflowServiceTests
         var offered = await context.ShiftSubmissions.SingleAsync(s => s.Id == 10);
         Assert.Equal(ShiftState.NotAccepted, offered.ShiftStatus);
         Assert.False(offered.IsSelected);
-        Assert.Equal(UserType.AdminUpdated, offered.UserType);
+        Assert.Equal(ShiftSubmissionSource.AdminEdited, offered.Source);
 
         var accepted = await context.ShiftSubmissions.SingleAsync(s =>
             s.UserId == "applicant" &&
@@ -188,7 +188,7 @@ public class ShiftExchangeWorkflowServiceTests
             s.ShiftType == ShiftType.Morning);
         Assert.Equal(ShiftState.Accepted, accepted.ShiftStatus);
         Assert.True(accepted.IsSelected);
-        Assert.Equal(UserType.AdminUpdated, accepted.UserType);
+        Assert.Equal(ShiftSubmissionSource.AdminEdited, accepted.Source);
         Assert.Equal(UserShiftRole.KeyHolder, accepted.UserShiftRole);
 
         var logs = await context.ShiftEditLogs

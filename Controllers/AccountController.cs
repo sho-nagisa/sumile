@@ -61,8 +61,7 @@ namespace sumile.Controllers
             {
                 UserName = newCustomId.ToString(),
                 CustomId = newCustomId,
-                Name = model.Name,
-                UserType = "0" // 登録時は基本的に Normal 扱いにしておく
+                Name = model.Name
             };
 
             var result = await _userManager.CreateAsync(user, model.Password);
@@ -123,7 +122,6 @@ namespace sumile.Controllers
 
             if (result.Succeeded)
             {
-                HttpContext.Session.SetString("UserType", user.UserType ?? "Normal");
                 HttpContext.Session.SetString("UserId", user.Id);
 
                 return RedirectToAction("Index", "Shift");

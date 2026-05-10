@@ -22,7 +22,7 @@ namespace sumile.Models
 
         public DateTime? SubmittedAt { get; set; }
 
-        public UserType UserType { get; set; }
+        public ShiftSubmissionSource Source { get; set; } = ShiftSubmissionSource.UserSubmitted;
 
         public UserShiftRole UserShiftRole { get; set; }
     }

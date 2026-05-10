@@ -39,7 +39,7 @@ public class ShiftSubmissionServiceTests
             ShiftStatus = ShiftState.NotAccepted,
             IsSelected = false,
             SubmittedAt = submittedAt.AddDays(-1),
-            UserType = UserType.AdminUpdated,
+            Source = ShiftSubmissionSource.AdminEdited,
             UserShiftRole = UserShiftRole.Normal
         });
         await context.SaveChangesAsync();
@@ -60,7 +60,7 @@ public class ShiftSubmissionServiceTests
             }
         });
 
-        await service.SubmitShiftsAsync(user, selectedShifts, 1, UserType.Normal, submittedAt);
+        await service.SubmitShiftsAsync(user, selectedShifts, 1, submittedAt);
 
         var submissions = await context.ShiftSubmissions
             .OrderBy(s => s.ShiftDayId)
@@ -72,7 +72,7 @@ public class ShiftSubmissionServiceTests
         {
             Assert.Equal(user.Id, submission.UserId);
             Assert.Equal(submittedAt, submission.SubmittedAt);
-            Assert.Equal(UserType.Normal, submission.UserType);
+            Assert.Equal(ShiftSubmissionSource.UserSubmitted, submission.Source);
             Assert.Equal(UserShiftRole.Normal, submission.UserShiftRole);
         });
 
@@ -123,7 +123,7 @@ public class ShiftSubmissionServiceTests
         });
         await context.SaveChangesAsync();
 
-        await service.SubmitShiftsAsync(user, "", 1, UserType.Normal, submittedAt);
+        await service.SubmitShiftsAsync(user, "", 1, submittedAt);
 
         var submissions = await context.ShiftSubmissions
             .OrderBy(s => s.ShiftType)

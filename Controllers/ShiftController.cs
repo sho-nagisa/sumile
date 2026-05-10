@@ -65,16 +65,10 @@ namespace sumile.Controllers
                 return RedirectToAction("Submission", new { periodId });
             }
 
-            var userTypeStr = HttpContext.Session.GetString("UserType") ?? "Normal";
-            var userType = Enum.TryParse(userTypeStr, out UserType parsedUserType)
-                ? parsedUserType
-                : UserType.Normal;
-
             await _shiftSubmissionService.SubmitShiftsAsync(
                 currentUser,
                 selectedShifts,
                 periodId,
-                userType,
                 DateTime.UtcNow);
 
             var submittedItems = string.IsNullOrWhiteSpace(selectedShifts)

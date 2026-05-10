@@ -266,7 +266,7 @@ namespace sumile.Services
                         IsSelected = IsSelectedState(newState),
                         SubmittedAt = updatedAt,
                         ShiftStatus = newState,
-                        UserType = UserType.AdminUpdated,
+                        Source = ShiftSubmissionSource.AdminEdited,
                         UserShiftRole = userRoles.TryGetValue(shift.UserId, out var userRole)
                             ? userRole
                             : UserShiftRole.Normal
@@ -279,7 +279,7 @@ namespace sumile.Services
                     existing.ShiftStatus = newState;
                     existing.IsSelected = IsSelectedState(newState);
                     existing.SubmittedAt = updatedAt;
-                    existing.UserType = UserType.AdminUpdated;
+                    existing.Source = ShiftSubmissionSource.AdminEdited;
                     _context.ShiftSubmissions.Update(existing);
                 }
 

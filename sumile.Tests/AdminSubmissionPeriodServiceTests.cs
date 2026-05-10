@@ -70,7 +70,7 @@ public class AdminSubmissionPeriodServiceTests
             ShiftStatus = ShiftState.Accepted,
             IsSelected = true,
             SubmittedAt = firstClosedAt.AddHours(-1),
-            UserType = UserType.Normal,
+            Source = ShiftSubmissionSource.UserSubmitted,
             UserShiftRole = UserShiftRole.Normal
         });
         await context.SaveChangesAsync();
