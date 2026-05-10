@@ -7,6 +7,6 @@ namespace sumile.ViewModels
         public List<RecruitmentPeriod> RecruitmentPeriods { get; set; } = new();
         public int SelectedPeriodId { get; set; }
         public List<ShiftDay> ShiftDays { get; set; } = new();
-        public Dictionary<int, global::DailyWorkload> WorkloadMap { get; set; } = new();
+        public Dictionary<int, DailyWorkload> WorkloadMap { get; set; } = new();
     }
 }

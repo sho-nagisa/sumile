@@ -36,7 +36,7 @@ public class AutoShiftAssignmentServiceTests
             RecruitmentPeriodId = 1
         });
         // 対応客数を追加
-        context.DailyWorkloads.Add(new global::DailyWorkload
+        context.DailyWorkloads.Add(new DailyWorkload
         {
             ShiftDayId = 101,
             RequiredCount = 40,
@@ -118,7 +118,7 @@ public class AutoShiftAssignmentServiceTests
             RecruitmentPeriodId = 1
         });
         // 対応客数を追加
-        context.DailyWorkloads.Add(new global::DailyWorkload
+        context.DailyWorkloads.Add(new DailyWorkload
         {
             ShiftDayId = 101,
             RequiredCount = 40,

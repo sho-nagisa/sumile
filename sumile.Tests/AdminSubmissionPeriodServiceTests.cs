@@ -123,7 +123,7 @@ public class AdminSubmissionPeriodServiceTests
                 Date = secondDate,
                 RecruitmentPeriodId = 1
             });
-        context.DailyWorkloads.Add(new global::DailyWorkload
+        context.DailyWorkloads.Add(new DailyWorkload
         {
             ShiftDayId = 101,
             RequiredCount = 20,

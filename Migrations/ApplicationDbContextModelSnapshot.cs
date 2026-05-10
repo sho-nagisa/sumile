@@ -22,7 +22,7 @@ namespace sumile.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("DailyWorkload", b =>
+            modelBuilder.Entity("sumile.Models.DailyWorkload", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -536,11 +536,11 @@ namespace sumile.Migrations
                     b.ToTable("SubmitBackups");
                 });
 
-            modelBuilder.Entity("DailyWorkload", b =>
+            modelBuilder.Entity("sumile.Models.DailyWorkload", b =>
                 {
                     b.HasOne("sumile.Models.ShiftDay", "ShiftDay")
                         .WithOne("DailyWorkload")
-                        .HasForeignKey("DailyWorkload", "ShiftDayId")
+                        .HasForeignKey("sumile.Models.DailyWorkload", "ShiftDayId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
