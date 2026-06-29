@@ -1,10 +1,22 @@
 using DotNetEnv;
+using Microsoft.AspNetCore.DataProtection;
 using PdfSharpCore.Fonts;
 using sumile.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
 Env.Load();
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
+var dataProtectionKeysPath = Path.Combine(
+    builder.Environment.ContentRootPath,
+    "App_Data",
+    "DataProtectionKeys");
+Directory.CreateDirectory(dataProtectionKeysPath);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
 
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 if (string.IsNullOrEmpty(connectionString))
@@ -23,9 +35,8 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
+    app.UseHttpsRedirection();
 }
-
-app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
