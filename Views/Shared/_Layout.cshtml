@@ -46,6 +46,9 @@
                             <li class="nav-item">
                                 <a class="@NavClass("Exchange")" asp-area="" asp-controller="Exchange" asp-action="Index">交換</a>
                             </li>
+                            <li class="nav-item">
+                                <a class="@NavClass("Shift", "ImportPdf")" asp-area="" asp-controller="Shift" asp-action="ImportPdf">PDF取込</a>
+                            </li>
                             @if (isAdmin)
                             {
                                 <li class="nav-item">

@@ -82,6 +82,7 @@ namespace sumile.Extensions
         private static IServiceCollection AddDomainServices(this IServiceCollection services)
         {
             services.AddScoped<ShiftPdfService>();
+            services.AddScoped<ShiftPdfCsvService>();
             services.AddScoped<IShiftService, ShiftService>();
             services.AddScoped<ShiftTableService>();
             services.AddScoped<ShiftStatusDisplayService>();

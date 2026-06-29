@@ -1,0 +1,79 @@
+@model sumile.ViewModels.ShiftPdfImportViewModel
+
+@{
+    ViewData["Title"] = "PDFからCSV";
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<div class="row">
+    <div class="col-lg-8">
+        <form asp-action="ImportPdf" asp-controller="Shift" method="post" enctype="multipart/form-data" class="shift-pdf-import-form">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+            <div class="mb-3">
+                <label asp-for="PdfFile" class="form-label"></label>
+                <input asp-for="PdfFile" type="file" accept="application/pdf,.pdf" class="form-control" />
+                <span asp-validation-for="PdfFile" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-sm-6">
+                    <label asp-for="PageNumber" class="form-label"></label>
+                    <input asp-for="PageNumber" class="form-control" min="1" />
+                    <span asp-validation-for="PageNumber" class="text-danger"></span>
+                </div>
+                <div class="col-sm-6">
+                    <label asp-for="StaffRowNumber" class="form-label"></label>
+                    <input asp-for="StaffRowNumber" class="form-control" min="1" />
+                    <span asp-validation-for="StaffRowNumber" class="text-danger"></span>
+                    <div class="form-text">スタッフ欄の先頭を1として数えます。</div>
+                </div>
+            </div>
+
+            <div class="mt-3 mb-3">
+                <label asp-for="SubjectPrefix" class="form-label"></label>
+                <input asp-for="SubjectPrefix" class="form-control" />
+                <span asp-validation-for="SubjectPrefix" class="text-danger"></span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-sm-6 col-lg-3">
+                    <label asp-for="MorningStartTime" class="form-label"></label>
+                    <input asp-for="MorningStartTime" type="time" class="form-control" />
+                    <span asp-validation-for="MorningStartTime" class="text-danger"></span>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label asp-for="MorningEndTime" class="form-label"></label>
+                    <input asp-for="MorningEndTime" type="time" class="form-control" />
+                    <span asp-validation-for="MorningEndTime" class="text-danger"></span>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label asp-for="NightStartTime" class="form-label"></label>
+                    <input asp-for="NightStartTime" type="time" class="form-control" />
+                    <span asp-validation-for="NightStartTime" class="text-danger"></span>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label asp-for="NightEndTime" class="form-label"></label>
+                    <input asp-for="NightEndTime" type="time" class="form-control" />
+                    <span asp-validation-for="NightEndTime" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="form-check mt-3">
+                <input asp-for="IncludeTriangle" class="form-check-input" />
+                <label asp-for="IncludeTriangle" class="form-check-label"></label>
+            </div>
+
+            <div class="mt-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">CSVをダウンロード</button>
+                <a asp-action="Index" asp-controller="Shift" class="btn btn-outline-secondary">シフト一覧へ戻る</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
