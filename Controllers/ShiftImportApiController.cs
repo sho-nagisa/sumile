@@ -150,6 +150,7 @@ namespace sumile.Controllers
             var startTime = item.StartTime.ToString("HH:mm");
             var endDate = item.EndDate.ToString("yyyy-MM-dd");
             var endTime = item.EndTime.ToString("HH:mm");
+            var eventKey = $"sumile-shift:{startDate}:{item.ShiftLabel}:{startTime}-{endTime}";
 
             return new ShiftImportApiEvent(
                 item.Subject,
@@ -163,7 +164,8 @@ namespace sumile.Controllers
                 endTime,
                 $"{startDate}T{startTime}:00",
                 $"{endDate}T{endTime}:00",
-                item.Description);
+                $"{item.Description}\n{eventKey}",
+                eventKey);
         }
     }
 }
