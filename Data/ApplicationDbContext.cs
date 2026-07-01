@@ -20,6 +20,7 @@ namespace sumile.Data
         public DbSet<DailyWorkload> DailyWorkloads { get; set; }
         public DbSet<ShiftDay> ShiftDays { get; set; }
         public DbSet<SubmitBackup> SubmitBackups { get; set; }
+        public DbSet<ShiftImportHistory> ShiftImportHistories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -42,6 +43,16 @@ namespace sumile.Data
                 .HasIndex(u => u.ShiftImportApiKey)
                 .IsUnique()
                 .HasFilter("\"ShiftImportApiKey\" IS NOT NULL AND \"ShiftImportApiKey\" <> ''");
+
+            builder.Entity<ShiftImportHistory>()
+                .HasIndex(history => new { history.UserId, history.RangeStartDate, history.RangeEndDate })
+                .IsUnique();
+
+            builder.Entity<ShiftImportHistory>()
+                .HasOne(history => history.User)
+                .WithMany()
+                .HasForeignKey(history => history.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // SubmitBackup: 募集期間 × 日付
             builder.Entity<SubmitBackup>()

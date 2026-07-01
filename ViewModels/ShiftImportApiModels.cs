@@ -18,9 +18,12 @@ namespace sumile.ViewModels
     }
 
     public sealed record ShiftImportApiResponse(
+        string RangeStartDate,
+        string RangeEndDate,
         int StaffRowNumber,
         int DetectedStaffRows,
-        IReadOnlyList<ShiftImportApiEvent> Events);
+        IReadOnlyList<ShiftImportApiEvent> Events,
+        IReadOnlyList<ShiftImportApiEvent> RemovedEvents);
 
     public sealed record ShiftImportApiEvent(
         string Title,

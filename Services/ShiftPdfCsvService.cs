@@ -334,7 +334,7 @@ namespace sumile.Services
             string shiftName,
             string status)
         {
-            return $"PDF行番号: {staffRowNumber}, シフト: {shiftName}, 記号: {status}";
+            return $"行番号: {staffRowNumber}, シフト: {shiftName}, 記号: {status}";
         }
 
         private static List<string> ExtractCellStatuses(TextRow row, List<ShiftPdfColumn> columns)

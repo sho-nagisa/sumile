@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using sumile.Data;
 using sumile.Models;
 using sumile.Services;
 using sumile.ViewModels;
+using System.Text.Json;
 
 namespace sumile.Controllers
 {
@@ -14,15 +16,18 @@ namespace sumile.Controllers
     public class ShiftImportApiController : ControllerBase
     {
         private readonly IConfiguration _configuration;
+        private readonly ApplicationDbContext _context;
         private readonly ShiftPdfCsvService _pdfCsvService;
         private readonly UserManager<ApplicationUser> _userManager;
 
         public ShiftImportApiController(
             IConfiguration configuration,
+            ApplicationDbContext context,
             ShiftPdfCsvService pdfCsvService,
             UserManager<ApplicationUser> userManager)
         {
             _configuration = configuration;
+            _context = context;
             _pdfCsvService = pdfCsvService;
             _userManager = userManager;
         }
@@ -69,16 +74,89 @@ namespace sumile.Controllers
             {
                 using var stream = request.File.OpenReadStream();
                 var result = _pdfCsvService.Convert(stream, BuildPdfOptions(request, staffRowNumber, staffSearchName));
+                var events = result.Events.Select(ToApiEvent).ToList();
+                var removedEvents = await SaveImportHistoryAndGetRemovedEventsAsync(importUser, result, events);
 
                 return Ok(new ShiftImportApiResponse(
+                    result.RangeStartDate.ToString("yyyy-MM-dd"),
+                    result.RangeEndDate.ToString("yyyy-MM-dd"),
                     result.SelectedStaffRowNumber,
                     result.DetectedStaffRows,
-                    result.Events.Select(ToApiEvent).ToList()));
+                    events,
+                    removedEvents));
             }
             catch (InvalidOperationException ex)
             {
                 return BadRequest(new { message = ex.Message });
             }
+        }
+
+        private async Task<IReadOnlyList<ShiftImportApiEvent>> SaveImportHistoryAndGetRemovedEventsAsync(
+            ApplicationUser? importUser,
+            ShiftPdfCsvResult result,
+            IReadOnlyList<ShiftImportApiEvent> currentEvents)
+        {
+            if (importUser == null)
+            {
+                return Array.Empty<ShiftImportApiEvent>();
+            }
+
+            var history = await _context.ShiftImportHistories
+                .FirstOrDefaultAsync(item =>
+                    item.UserId == importUser.Id &&
+                    item.RangeStartDate == result.RangeStartDate &&
+                    item.RangeEndDate == result.RangeEndDate);
+
+            var previousEvents = history == null
+                ? new List<ShiftImportApiEvent>()
+                : DeserializeEvents(history.EventsJson);
+
+            var currentEventKeys = currentEvents
+                .Select(item => item.EventKey)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var removedEvents = previousEvents
+                .Where(item => !currentEventKeys.Contains(item.EventKey))
+                .ToList();
+
+            var now = DateTime.UtcNow;
+            if (history == null)
+            {
+                _context.ShiftImportHistories.Add(new ShiftImportHistory
+                {
+                    UserId = importUser.Id,
+                    RangeStartDate = result.RangeStartDate,
+                    RangeEndDate = result.RangeEndDate,
+                    EventsJson = SerializeEvents(currentEvents),
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now
+                });
+            }
+            else
+            {
+                history.EventsJson = SerializeEvents(currentEvents);
+                history.UpdatedAtUtc = now;
+            }
+
+            await _context.SaveChangesAsync();
+            return removedEvents;
+        }
+
+        private static List<ShiftImportApiEvent> DeserializeEvents(string eventsJson)
+        {
+            if (string.IsNullOrWhiteSpace(eventsJson))
+            {
+                return new List<ShiftImportApiEvent>();
+            }
+
+            return JsonSerializer.Deserialize<List<ShiftImportApiEvent>>(
+                eventsJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ShiftImportApiEvent>();
+        }
+
+        private static string SerializeEvents(IReadOnlyList<ShiftImportApiEvent> events)
+        {
+            return JsonSerializer.Serialize(events);
         }
 
         private bool IsAuthorized(string? formApiKey, bool hasValidShortcutKey)
@@ -150,7 +228,7 @@ namespace sumile.Controllers
             var startTime = item.StartTime.ToString("HH:mm");
             var endDate = item.EndDate.ToString("yyyy-MM-dd");
             var endTime = item.EndTime.ToString("HH:mm");
-            var eventKey = $"sumile-shift:{startDate}:{item.ShiftLabel}:{startTime}-{endTime}";
+            var eventKey = $"{startDate}:{item.ShiftLabel}:{startTime}-{endTime}";
 
             return new ShiftImportApiEvent(
                 item.Subject,
