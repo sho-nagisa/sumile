@@ -38,6 +38,11 @@ namespace sumile.Data
                 .IsUnique()
                 .HasFilter("\"CustomId\" > 0");
 
+            builder.Entity<ApplicationUser>()
+                .HasIndex(u => u.ShiftImportApiKey)
+                .IsUnique()
+                .HasFilter("\"ShiftImportApiKey\" IS NOT NULL AND \"ShiftImportApiKey\" <> ''");
+
             // SubmitBackup: 募集期間 × 日付
             builder.Entity<SubmitBackup>()
                 .HasIndex(b => new { b.RecruitmentPeriodId, b.ShiftDayId });

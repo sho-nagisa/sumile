@@ -10,6 +10,8 @@ using Npgsql;
 using sumile.Authorization;
 using sumile.Data;
 using System.Data;
+using System.Security.Cryptography;
+using sumile.ViewModels;
 
 namespace sumile.Controllers
 {
@@ -216,6 +218,127 @@ namespace sumile.Controllers
                     }),
                     null);
             }
+        }
+
+        // ========== マイページ ==========
+        [HttpGet]
+        [Authorize]
+        public async Task<IActionResult> MyPage()
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null)
+            {
+                return RedirectToAction(nameof(Login));
+            }
+
+            return View(ToShiftImportSettingsViewModel(user));
+        }
+
+        [HttpPost]
+        [Authorize]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> MyPage(ShiftImportSettingsViewModel model)
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null)
+            {
+                return RedirectToAction(nameof(Login));
+            }
+
+            if (!ModelState.IsValid)
+            {
+                model.CustomId = user.CustomId;
+                model.Name = user.Name;
+                model.ShiftPdfSearchName = user.ShiftPdfSearchName;
+                model.ShiftImportApiKey = user.ShiftImportApiKey;
+                return View(model);
+            }
+
+            user.ShiftPdfSearchName = string.IsNullOrWhiteSpace(model.ShiftPdfSearchName)
+                ? null
+                : model.ShiftPdfSearchName.Trim();
+            user.ShiftPdfStaffRowNumber = model.ShiftPdfStaffRowNumber;
+            if (string.IsNullOrWhiteSpace(user.ShiftImportApiKey))
+            {
+                user.ShiftImportApiKey = await GenerateUniqueShiftImportApiKeyAsync();
+            }
+
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+            {
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+
+                model.CustomId = user.CustomId;
+                model.Name = user.Name;
+                model.ShiftPdfSearchName = user.ShiftPdfSearchName;
+                model.ShiftImportApiKey = user.ShiftImportApiKey;
+                return View(model);
+            }
+
+            TempData["SuccessMessage"] = "PDF取込設定を保存しました。";
+            return RedirectToAction(nameof(MyPage));
+        }
+
+        [HttpPost]
+        [Authorize]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RegenerateShiftImportApiKey()
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null)
+            {
+                return RedirectToAction(nameof(Login));
+            }
+
+            user.ShiftImportApiKey = await GenerateUniqueShiftImportApiKeyAsync();
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+            {
+                TempData["ErrorMessage"] = "ショートカット用キーを再発行できませんでした。";
+                return RedirectToAction(nameof(MyPage));
+            }
+
+            TempData["SuccessMessage"] = "ショートカット用キーを再発行しました。";
+            return RedirectToAction(nameof(MyPage));
+        }
+
+        private static ShiftImportSettingsViewModel ToShiftImportSettingsViewModel(ApplicationUser user)
+        {
+            return new ShiftImportSettingsViewModel
+            {
+                CustomId = user.CustomId,
+                Name = user.Name,
+                ShiftPdfSearchName = user.ShiftPdfSearchName,
+                ShiftPdfStaffRowNumber = user.ShiftPdfStaffRowNumber,
+                ShiftImportApiKey = user.ShiftImportApiKey
+            };
+        }
+
+        private async Task<string> GenerateUniqueShiftImportApiKeyAsync()
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                var key = GenerateShiftImportApiKey();
+                var exists = await _userManager.Users.AnyAsync(user => user.ShiftImportApiKey == key);
+                if (!exists)
+                {
+                    return key;
+                }
+            }
+
+            throw new InvalidOperationException("ショートカット用キーを生成できませんでした。");
+        }
+
+        private static string GenerateShiftImportApiKey()
+        {
+            var bytes = RandomNumberGenerator.GetBytes(32);
+            return Convert.ToBase64String(bytes)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
         }
 
         // ========== ログイン ==========

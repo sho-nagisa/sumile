@@ -139,6 +139,7 @@ namespace sumile.Controllers
                 var result = _shiftPdfCsvService.Convert(stream, new ShiftPdfCsvOptions(
                     model.PageNumber,
                     model.StaffRowNumber,
+                    null,
                     model.SubjectPrefix,
                     model.MorningStartTime,
                     model.MorningEndTime,

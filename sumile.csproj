@@ -30,6 +30,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="tmp\**\*.cs" />
+    <Content Remove="obj\**" />
+    <Content Remove="tmp\**" />
+    <None Remove="obj\**" />
+    <None Remove="tmp\**" />
     <Compile Remove="sumile.Tests\**\*.cs" />
     <Content Remove="sumile.Tests\**" />
     <None Remove="sumile.Tests\**" />

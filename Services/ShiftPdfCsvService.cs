@@ -38,18 +38,12 @@ namespace sumile.Services
             var columns = BuildColumns(dates, shiftRow.LabelChunks);
             var staffRows = FindStaffRows(rows, shiftRow.Row, columns);
 
-            if (options.StaffRowNumber > staffRows.Count)
-            {
-                throw new InvalidOperationException(
-                    $"読み取れたスタッフ行は{staffRows.Count}行です。スタッフ行番号を確認してください。");
-            }
-
             var times = ShiftPdfCsvTimes.Parse(options);
-            var targetRow = staffRows[options.StaffRowNumber - 1];
-            var events = BuildEvents(targetRow, columns, times, options).ToList();
+            var targetRow = ResolveTargetRow(staffRows, columns, options);
+            var events = BuildEvents(targetRow.Row, columns, times, options, targetRow.RowNumber, targetRow.StaffName).ToList();
             var csv = BuildCsv(events);
 
-            return new ShiftPdfCsvResult(csv, events, staffRows.Count);
+            return new ShiftPdfCsvResult(csv, events, staffRows.Count, targetRow.RowNumber, targetRow.StaffName);
         }
 
         private static ShiftPdfDateRow FindDateHeaderRow(List<TextRow> rows)
@@ -158,11 +152,143 @@ namespace sumile.Services
                 .ToList();
         }
 
+        private static ShiftPdfTargetRow ResolveTargetRow(
+            List<TextRow> staffRows,
+            List<ShiftPdfColumn> columns,
+            ShiftPdfCsvOptions options)
+        {
+            if (!string.IsNullOrWhiteSpace(options.StaffSearchName))
+            {
+                var searchMatch = FindStaffRowBySearchName(staffRows, columns, options.StaffSearchName);
+                if (searchMatch != null)
+                {
+                    return searchMatch;
+                }
+
+                if (!options.StaffRowNumber.HasValue)
+                {
+                    throw new InvalidOperationException(
+                        $"PDF上の検索名「{options.StaffSearchName}」に一致するスタッフ行が見つかりませんでした。");
+                }
+            }
+
+            if (!options.StaffRowNumber.HasValue || options.StaffRowNumber.Value < 1)
+            {
+                throw new InvalidOperationException("スタッフ行番号を確認してください。");
+            }
+
+            if (options.StaffRowNumber.Value > staffRows.Count)
+            {
+                throw new InvalidOperationException(
+                    $"読み取れたスタッフ行は{staffRows.Count}行です。スタッフ行番号を確認してください。");
+            }
+
+            var targetRow = staffRows[options.StaffRowNumber.Value - 1];
+            return new ShiftPdfTargetRow(
+                targetRow,
+                options.StaffRowNumber.Value,
+                ExtractStaffName(targetRow, columns));
+        }
+
+        private static ShiftPdfTargetRow? FindStaffRowBySearchName(
+            List<TextRow> staffRows,
+            List<ShiftPdfColumn> columns,
+            string searchName)
+        {
+            var normalizedSearchName = NormalizeStaffName(searchName);
+            if (string.IsNullOrWhiteSpace(normalizedSearchName))
+            {
+                return null;
+            }
+
+            var matches = staffRows
+                .Select((row, index) => new
+                {
+                    Row = row,
+                    RowNumber = index + 1,
+                    StaffName = ExtractStaffName(row, columns)
+                })
+                .Where(item => NormalizeStaffName(item.StaffName) == normalizedSearchName)
+                .ToList();
+
+            if (matches.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"PDF上の検索名「{searchName}」に一致するスタッフ行が複数あります。フルネームで登録してください。");
+            }
+
+            var match = matches.SingleOrDefault();
+            return match == null
+                ? null
+                : new ShiftPdfTargetRow(match.Row, match.RowNumber, match.StaffName);
+        }
+
+        private static string ExtractStaffName(TextRow row, List<ShiftPdfColumn> columns)
+        {
+            var nameRight = columns.Min(column => column.Left);
+            var rawName = string.Concat(row.Glyphs
+                .Where(glyph => glyph.CenterX < nameRight)
+                .OrderBy(glyph => glyph.Left)
+                .Select(glyph => glyph.Text));
+
+            return CleanStaffName(rawName);
+        }
+
+        private static string CleanStaffName(string value)
+        {
+            var builder = new StringBuilder();
+            foreach (var character in value)
+            {
+                if (char.IsWhiteSpace(character) || IsStaffNameIgnoredCharacter(character))
+                {
+                    continue;
+                }
+
+                builder.Append(character);
+            }
+
+            return builder.ToString();
+        }
+
+        private static string NormalizeStaffName(string value)
+        {
+            var builder = new StringBuilder();
+            foreach (var character in value.Normalize(NormalizationForm.FormKC))
+            {
+                if (char.IsWhiteSpace(character) || IsStaffNameIgnoredCharacter(character))
+                {
+                    continue;
+                }
+
+                builder.Append(NormalizeStaffNameCharacter(character));
+            }
+
+            return builder.ToString();
+        }
+
+        private static char NormalizeStaffNameCharacter(char character)
+        {
+            return character switch
+            {
+                '髙' => '高',
+                '﨑' => '崎',
+                _ => character
+            };
+        }
+
+        private static bool IsStaffNameIgnoredCharacter(char character)
+        {
+            return character is '★' or '☆' or '○' or '〇' or '◯' or '●'
+                or '△' or '▲' or '×' or '✕' or '✖';
+        }
+
         private static IEnumerable<ShiftPdfCsvEvent> BuildEvents(
             TextRow row,
             List<ShiftPdfColumn> columns,
             ShiftPdfCsvTimes times,
-            ShiftPdfCsvOptions options)
+            ShiftPdfCsvOptions options,
+            int staffRowNumber,
+            string staffName)
         {
             var statuses = ExtractCellStatuses(row, columns);
 
@@ -192,8 +318,21 @@ namespace sumile.Services
                     column.Label,
                     shiftName,
                     status,
-                    $"PDF行番号: {options.StaffRowNumber}, シフト: {shiftName}, 記号: {status}");
+                    BuildDescription(staffRowNumber, staffName, shiftName, status));
             }
+        }
+
+        private static string BuildDescription(
+            int staffRowNumber,
+            string staffName,
+            string shiftName,
+            string status)
+        {
+            var staffNamePart = string.IsNullOrWhiteSpace(staffName)
+                ? ""
+                : $", PDF氏名: {staffName}";
+
+            return $"PDF行番号: {staffRowNumber}{staffNamePart}, シフト: {shiftName}, 記号: {status}";
         }
 
         private static List<string> ExtractCellStatuses(TextRow row, List<ShiftPdfColumn> columns)
@@ -433,6 +572,8 @@ namespace sumile.Services
 
         private sealed record ShiftPdfShiftRow(TextRow Row, List<TextChunk> LabelChunks);
 
+        private sealed record ShiftPdfTargetRow(TextRow Row, int RowNumber, string StaffName);
+
         private sealed record TextChunk(string Text, double Left, double Right, double CenterX);
 
         private sealed record PdfGlyph(string Text, double Left, double Right, double Top, double Bottom)
@@ -495,7 +636,8 @@ namespace sumile.Services
 
     public sealed record ShiftPdfCsvOptions(
         int PageNumber,
-        int StaffRowNumber,
+        int? StaffRowNumber,
+        string? StaffSearchName,
         string SubjectPrefix,
         string MorningStartTime,
         string MorningEndTime,
@@ -506,7 +648,9 @@ namespace sumile.Services
     public sealed record ShiftPdfCsvResult(
         string Csv,
         IReadOnlyList<ShiftPdfCsvEvent> Events,
-        int DetectedStaffRows);
+        int DetectedStaffRows,
+        int SelectedStaffRowNumber,
+        string SelectedStaffName);
 
     public sealed record ShiftPdfCsvEvent(
         string Subject,

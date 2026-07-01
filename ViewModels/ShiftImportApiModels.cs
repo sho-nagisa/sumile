@@ -6,7 +6,7 @@ namespace sumile.ViewModels
     {
         public IFormFile? File { get; set; }
         public int PageNumber { get; set; } = 1;
-        public int StaffRowNumber { get; set; } = 4;
+        public int? StaffRowNumber { get; set; }
         public string SubjectPrefix { get; set; } = "\u3075\u306a\u3084";
         public string MorningStartTime { get; set; } = "06:30";
         public string MorningEndTime { get; set; } = "10:30";
@@ -14,6 +14,7 @@ namespace sumile.ViewModels
         public string NightEndTime { get; set; } = "21:30";
         public bool IncludeTriangle { get; set; } = true;
         public string? ApiKey { get; set; }
+        public string? ShortcutKey { get; set; }
     }
 
     public sealed record ShiftImportApiResponse(

@@ -10,5 +10,8 @@ namespace sumile.Models
         public UserShiftRole UserShiftRole { get; set; }
         public int Gender {  get; set; }
         public bool IsAdmin { get; set; }
+        public string? ShiftPdfSearchName { get; set; }
+        public int? ShiftPdfStaffRowNumber { get; set; }
+        public string? ShiftImportApiKey { get; set; }
     }
 }

@@ -1,11 +1,70 @@
-﻿@{
-    ViewData["Title"] = "MyPage";
+@model sumile.ViewModels.ShiftImportSettingsViewModel
+
+@{
+    ViewData["Title"] = "マイページ";
 }
 
 <h2>マイページ</h2>
 
-<p>ログイン後の専用画面です。</p>
+@if (TempData["SuccessMessage"] is string successMessage)
+{
+    <div class="alert alert-success">@successMessage</div>
+}
 
-<form asp-controller="Account" asp-action="Logout" method="post">
+@if (TempData["ErrorMessage"] is string errorMessage)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<dl class="row">
+    <dt class="col-sm-3">ログインID</dt>
+    <dd class="col-sm-9">@Model.CustomId</dd>
+    <dt class="col-sm-3">名前</dt>
+    <dd class="col-sm-9">@Model.Name</dd>
+</dl>
+
+<h3 class="h5 mt-4">PDF取込設定</h3>
+
+<form asp-controller="Account" asp-action="MyPage" method="post" class="mt-3">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <input asp-for="CustomId" type="hidden" />
+    <input asp-for="Name" type="hidden" />
+    <input asp-for="ShiftImportApiKey" type="hidden" />
+
+    <div class="mb-3">
+        <label asp-for="ShiftPdfSearchName" class="form-label"></label>
+        <input asp-for="ShiftPdfSearchName" class="form-control" placeholder="例: 松本圭真" />
+        <span asp-validation-for="ShiftPdfSearchName" class="text-danger"></span>
+        <div class="form-text">PDF上の表記に合わせて、姓と名を続けて入力します。</div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="ShiftPdfStaffRowNumber" class="form-label"></label>
+        <input asp-for="ShiftPdfStaffRowNumber" class="form-control" min="1" max="200" />
+        <span asp-validation-for="ShiftPdfStaffRowNumber" class="text-danger"></span>
+        <div class="form-text">検索名で見つからない場合だけ使います。</div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="ShiftImportApiKey" class="form-label"></label>
+        <input value="@(Model.ShiftImportApiKey ?? "未発行")" class="form-control" readonly />
+    </div>
+
+    <button type="submit" class="btn btn-primary">保存</button>
+</form>
+
+<form asp-controller="Account" asp-action="RegenerateShiftImportApiKey" method="post" class="mt-3">
+    @Html.AntiForgeryToken()
+    <button type="submit" class="btn btn-outline-secondary">ショートカット用キーを再発行</button>
+</form>
+
+<form asp-controller="Account" asp-action="Logout" method="post" class="mt-4">
+    @Html.AntiForgeryToken()
     <button type="submit" class="btn btn-danger">ログアウト</button>
 </form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using sumile.Models;
 using sumile.Services;
 using sumile.ViewModels;
 
@@ -12,20 +15,30 @@ namespace sumile.Controllers
     {
         private readonly IConfiguration _configuration;
         private readonly ShiftPdfCsvService _pdfCsvService;
+        private readonly UserManager<ApplicationUser> _userManager;
 
         public ShiftImportApiController(
             IConfiguration configuration,
-            ShiftPdfCsvService pdfCsvService)
+            ShiftPdfCsvService pdfCsvService,
+            UserManager<ApplicationUser> userManager)
         {
             _configuration = configuration;
             _pdfCsvService = pdfCsvService;
+            _userManager = userManager;
         }
 
         [HttpPost]
         [RequestSizeLimit(10_000_000)]
-        public IActionResult Import([FromForm] ShiftImportApiRequest request)
+        public async Task<IActionResult> Import([FromForm] ShiftImportApiRequest request)
         {
-            if (!IsAuthorized(request.ApiKey))
+            var shortcutKey = GetShortcutKey(request);
+            var importUser = await FindUserByShortcutKeyAsync(shortcutKey);
+            if (!string.IsNullOrWhiteSpace(shortcutKey) && importUser == null)
+            {
+                return Unauthorized(new { message = "Shortcut key is invalid." });
+            }
+
+            if (!IsAuthorized(request.ApiKey, importUser != null))
             {
                 return Unauthorized(new { message = "API key is invalid." });
             }
@@ -45,18 +58,20 @@ namespace sumile.Controllers
                 return BadRequest(new { message = "Only PDF files are supported." });
             }
 
-            if (request.StaffRowNumber < 1)
+            var staffSearchName = importUser?.ShiftPdfSearchName;
+            var staffRowNumber = request.StaffRowNumber ?? importUser?.ShiftPdfStaffRowNumber;
+            if (string.IsNullOrWhiteSpace(staffSearchName) && staffRowNumber is null or < 1)
             {
-                return BadRequest(new { message = "staffRowNumber must be 1 or greater." });
+                return BadRequest(new { message = "staffRowNumber or a shortcutKey with saved PDF settings is required." });
             }
 
             try
             {
                 using var stream = request.File.OpenReadStream();
-                var result = _pdfCsvService.Convert(stream, BuildPdfOptions(request));
+                var result = _pdfCsvService.Convert(stream, BuildPdfOptions(request, staffRowNumber, staffSearchName));
 
                 return Ok(new ShiftImportApiResponse(
-                    request.StaffRowNumber,
+                    result.SelectedStaffRowNumber,
                     result.DetectedStaffRows,
                     result.Events.Select(ToApiEvent).ToList()));
             }
@@ -66,8 +81,13 @@ namespace sumile.Controllers
             }
         }
 
-        private bool IsAuthorized(string? formApiKey)
+        private bool IsAuthorized(string? formApiKey, bool hasValidShortcutKey)
         {
+            if (hasValidShortcutKey)
+            {
+                return true;
+            }
+
             var expected = Environment.GetEnvironmentVariable("SHIFT_IMPORT_API_KEY")
                 ?? _configuration["SHIFT_IMPORT_API_KEY"];
 
@@ -82,11 +102,32 @@ namespace sumile.Controllers
             return string.Equals(provided, expected, StringComparison.Ordinal);
         }
 
-        private static ShiftPdfCsvOptions BuildPdfOptions(ShiftImportApiRequest request)
+        private string? GetShortcutKey(ShiftImportApiRequest request)
+        {
+            return Request.Headers["X-Shift-Import-Shortcut-Key"].FirstOrDefault()
+                ?? request.ShortcutKey;
+        }
+
+        private async Task<ApplicationUser?> FindUserByShortcutKeyAsync(string? shortcutKey)
+        {
+            if (string.IsNullOrWhiteSpace(shortcutKey))
+            {
+                return null;
+            }
+
+            return await _userManager.Users
+                .FirstOrDefaultAsync(user => user.ShiftImportApiKey == shortcutKey);
+        }
+
+        private static ShiftPdfCsvOptions BuildPdfOptions(
+            ShiftImportApiRequest request,
+            int? staffRowNumber,
+            string? staffSearchName)
         {
             return new ShiftPdfCsvOptions(
                 request.PageNumber,
-                request.StaffRowNumber,
+                staffRowNumber,
+                staffSearchName,
                 request.SubjectPrefix,
                 request.MorningStartTime,
                 request.MorningEndTime,
