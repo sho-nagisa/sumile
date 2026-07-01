@@ -43,7 +43,14 @@ namespace sumile.Services
             var events = BuildEvents(targetRow.Row, columns, times, options, targetRow.RowNumber, targetRow.StaffName).ToList();
             var csv = BuildCsv(events);
 
-            return new ShiftPdfCsvResult(csv, events, staffRows.Count, targetRow.RowNumber, targetRow.StaffName);
+            return new ShiftPdfCsvResult(
+                csv,
+                events,
+                staffRows.Count,
+                targetRow.RowNumber,
+                targetRow.StaffName,
+                dates.First(),
+                dates.Last());
         }
 
         private static ShiftPdfDateRow FindDateHeaderRow(List<TextRow> rows)
@@ -318,21 +325,16 @@ namespace sumile.Services
                     column.Label,
                     shiftName,
                     status,
-                    BuildDescription(staffRowNumber, staffName, shiftName, status));
+                    BuildDescription(staffRowNumber, shiftName, status));
             }
         }
 
         private static string BuildDescription(
             int staffRowNumber,
-            string staffName,
             string shiftName,
             string status)
         {
-            var staffNamePart = string.IsNullOrWhiteSpace(staffName)
-                ? ""
-                : $", PDF氏名: {staffName}";
-
-            return $"PDF行番号: {staffRowNumber}{staffNamePart}, シフト: {shiftName}, 記号: {status}";
+            return $"PDF行番号: {staffRowNumber}, シフト: {shiftName}, 記号: {status}";
         }
 
         private static List<string> ExtractCellStatuses(TextRow row, List<ShiftPdfColumn> columns)
@@ -650,7 +652,9 @@ namespace sumile.Services
         IReadOnlyList<ShiftPdfCsvEvent> Events,
         int DetectedStaffRows,
         int SelectedStaffRowNumber,
-        string SelectedStaffName);
+        string SelectedStaffName,
+        DateOnly RangeStartDate,
+        DateOnly RangeEndDate);
 
     public sealed record ShiftPdfCsvEvent(
         string Subject,
