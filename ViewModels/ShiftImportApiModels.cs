@@ -34,5 +34,6 @@ namespace sumile.ViewModels
         string EndTime,
         string Start,
         string End,
-        string Notes);
+        string Notes,
+        string EventKey);
 }
