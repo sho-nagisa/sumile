@@ -8,10 +8,10 @@ namespace sumile.ViewModels
         public int PageNumber { get; set; } = 1;
         public int StaffRowNumber { get; set; } = 1;
         public string SubjectPrefix { get; set; } = "\u3075\u306a\u3084";
-        public string MorningStartTime { get; set; } = "07:00";
-        public string MorningEndTime { get; set; } = "08:00";
+        public string MorningStartTime { get; set; } = "06:30";
+        public string MorningEndTime { get; set; } = "10:30";
         public string NightStartTime { get; set; } = "18:30";
-        public string NightEndTime { get; set; } = "19:30";
+        public string NightEndTime { get; set; } = "21:30";
         public bool IncludeTriangle { get; set; } = true;
         public string? ApiKey { get; set; }
     }
