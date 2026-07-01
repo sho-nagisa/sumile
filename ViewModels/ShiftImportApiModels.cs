@@ -6,7 +6,7 @@ namespace sumile.ViewModels
     {
         public IFormFile? File { get; set; }
         public int PageNumber { get; set; } = 1;
-        public int StaffRowNumber { get; set; } = 1;
+        public int StaffRowNumber { get; set; } = 4;
         public string SubjectPrefix { get; set; } = "\u3075\u306a\u3084";
         public string MorningStartTime { get; set; } = "06:30";
         public string MorningEndTime { get; set; } = "10:30";
